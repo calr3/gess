@@ -21,10 +21,12 @@
 // the captureless-draw-vs-decisive collision is real for the loss case, which
 // is exactly the fixture we build below.
 
+// Imports the real game-logic source directly (Node strips the types); there is
+// no separate TS oracle any more — the AI search lives only in the WASM engine.
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 const __d = dirname(fileURLToPath(import.meta.url));
-const E = await import(join(__d, 'engine.mjs'));
+const E = await import(join(__d, '..', 'src', 'app', 'services', 'gess-engine.ts'));
 const { applyMove, countRings, wasCapture, totalStones, resolveOutcome, NO_CAPTURE_DRAW_LIMIT: LIM } = E;
 
 let passed = 0, failed = 0;

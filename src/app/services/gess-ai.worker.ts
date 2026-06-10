@@ -4,8 +4,8 @@
 // board + player + time budget, replies with the chosen move.
 //
 // The search itself is the Rust engine compiled to WebAssembly (gess-wasm),
-// which is instantiated once on first use. It is a verified, behaviour-identical
-// replacement for the former TypeScript search in gess-engine.
+// which is instantiated once on first use. It is the sole AI engine; the former
+// TypeScript search has been removed (gess-engine now holds only game logic).
 
 import { getBestMove } from './gess-wasm';
 import type { Board, Player } from '../models/game.model';

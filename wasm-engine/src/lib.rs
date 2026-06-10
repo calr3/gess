@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Gess AI search engine — Rust port of the bitboard search in gess-engine.ts.
+// Gess AI search engine (Rust → WebAssembly) — the sole AI engine.
 //
-// This is a *faithful* re-implementation of the TypeScript search hot path:
-// bitboards, move generation (genMoves), make/unmake, incremental evaluation,
-// and iterative-deepening negamax with alpha-beta. Iteration order, the stable
-// sort key, the eval formula, the mate-distance scoring and the random
-// tie-break all match the TS engine exactly, so it produces identical results.
+// Bitboards, move generation (gen_moves), make/unmake, incremental evaluation,
+// and iterative-deepening negamax with alpha-beta. It began as a port of an
+// earlier TypeScript search (since removed); the iteration order, stable sort
+// key, eval formula, mate-distance scoring and random tie-break are all defined
+// here now. A deterministic eager path (TT off) mirrors the production lazy path
+// and is kept as an in-engine self-check.
 //
 // ABI: hand-written and numeric (no wasm-bindgen) so the same .wasm loads
-// identically in a browser worker and in the Node verification harness. The
-// caller writes the board into the BOARD buffer (400 bytes, row-major, one byte
-// per cell: 0 = empty, 1 = white, 2 = black), calls an exported function, and
+// identically in a browser worker and from Node. The caller writes the board
+// into the BOARD buffer (400 bytes, row-major, one byte per cell: 0 = empty,
+// 1 = white, 2 = black), calls an exported function, and
 // reads results back from the OUT buffer (i32 words). Two host functions are
 // imported from "env": now() (ms wall-clock, for the deadline) and random()
 // (uniform [0,1), for tie-breaking) — matching Date.now() / Math.random().
@@ -61,8 +62,8 @@ const PLAY_MASK: u32 = 0x7FFFE; // columns 1..18
 // inside 2e9, so comparisons and negation behave exactly like the JS doubles.
 const NEG_INF: i32 = -2_000_000_000;
 
-// [dr, dc] for each of the 8 footprint positions relative to center, same order
-// as DIRS in the TS engine (this order, with the stable sort, fixes move order).
+// [dr, dc] for each of the 8 footprint positions relative to center. This order,
+// with the stable sort below, pins down the move order (and so the tie-breaks).
 const DIRS: [(i32, i32); 8] = [
     (-1, -1), (-1, 0), (-1, 1),
     (0, -1),           (0, 1),
@@ -520,8 +521,8 @@ unsafe fn promote(base: *mut Move, mstart: usize, mcount: usize, front: usize, t
 
 // Allocation-free *stable* sort (bottom-up merge sort) of `n` moves at `a`, using
 // `tmp` (capacity ≥ n) as scratch. std's slice::sort_by allocates, which the
-// helper threads must not do; this preserves the TS engine's stable order (equal
-// elements keep their insertion order) so results stay byte-identical.
+// helper threads must not do; the stable order (equal elements keep their
+// insertion order) keeps move ordering — and thus results — deterministic.
 unsafe fn stable_sort_moves(a: *mut Move, n: usize, tmp: *mut Move) {
     if n < 2 { return; }
     let mut src = a;
@@ -1098,7 +1099,7 @@ impl Engine {
     /// pay the full per-move eval (incl. the ring_safety/deepest full scans) for
     /// moves alpha-beta prunes, nor at all for interior nodes. The minimax value
     /// is unchanged (ordering doesn't affect it; the leaf eval is the same full
-    /// key), so `bestScore == oracle` still holds.
+    /// key), so the lazy path's value still matches the eager path's.
     fn negamax_lazy(&mut self, white: bool, depth: i32, mut alpha: i32, beta: i32, ply: i32, deadline: f64, can_null: bool) -> i32 {
         self.nodes = self.nodes.wrapping_add(1); // counted on every path (also drives the clock throttle)
         if deadline.is_finite() {
@@ -1224,8 +1225,8 @@ impl Engine {
         best
     }
 
-    /// Dispatch to the lazy (TT-on, production) or eager (TT-off, byte-identical
-    /// verification) search. Drivers call this; each variant then recurses into
+    /// Dispatch to the lazy (TT-on, production) or eager (TT-off, deterministic
+    /// self-check) search. Drivers call this; each variant then recurses into
     /// itself. FORCE_EAGER lets a benchmark route TT-on through the eager path too
     /// (for A/B), without rebuilding.
     #[inline]
@@ -1248,7 +1249,7 @@ pub extern "C" fn set_force_eager(v: i32) {
 }
 
 // Null-move pruning toggle. ON by default (production). The exact-search
-// verification (the harness) turns it OFF so the lazy path stays byte-exact; it
+// self-check turns it OFF so the lazy path matches the eager path exactly; it
 // also gives a clean same-build A/B for measuring the node reduction.
 static NULLMOVE: AtomicBool = AtomicBool::new(true);
 
@@ -1690,7 +1691,7 @@ pub extern "C" fn stop_search() {
 /// Verification only: a deterministic fixed-depth search over the SHARED TT that
 /// does NOT bump the generation (begin_search already did). Run on the main
 /// worker while helpers concurrently pound the same table, its bestScore must
-/// still equal the oracle's depth-`max_depth` value — proving the lockless TT
+/// still equal the single-threaded depth-`max_depth` value — proving the lockless TT
 /// never lets a concurrent write corrupt the minimax result. INFINITY deadline →
 /// the time/STOP check is skipped, so the value is order-independent.
 #[no_mangle]
@@ -1888,7 +1889,7 @@ pub extern "C" fn bench_timed(white_i: i32, budget_ms: f64) -> i32 {
 /// Benchmark only: fixed-depth iterative-deepening search (lazy, no time limit),
 /// returning the total node count. Deterministic (no time limit) and exact, so
 /// it's the clean way to A/B a change's node count or per-node time at a fixed
-/// depth (the eval is byte-identical, so the node count is invariant).
+/// depth (the eval is deterministic, so the node count is invariant).
 #[no_mangle]
 pub extern "C" fn bench_fixed(white_i: i32, max_depth: i32) -> i32 {
     ensure_zobrist();

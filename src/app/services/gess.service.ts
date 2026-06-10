@@ -2,7 +2,8 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { Board, GameResult, GameState, MoveRecord, Player, Position } from '../models/game.model';
 import * as Engine from './gess-engine';
-import { AiMove, SIZE, TIME_BUDGET_MS } from './gess-engine';
+import { SIZE, TIME_BUDGET_MS } from './gess-engine';
+import { AiMove, getBestMove as wasmGetBestMove } from './gess-wasm';
 import type { AiRequest } from './gess-ai.worker';
 
 function cap(s: string): string {
@@ -139,18 +140,6 @@ export class GessService implements OnDestroy {
     return Engine.getEnclosedCells(board, player);
   }
 
-  /**
-   * Synchronous search on the calling thread. Used as a worker fallback and
-   * convenient for tests; normal gameplay drives the worker via executeAiMove.
-   */
-  getBestMove(
-    board: Board, player: Player, timeBudgetMs = TIME_BUDGET_MS,
-  ): { from: Position; to: Position } | null {
-    const r = Engine.getBestMove(board, player, timeBudgetMs);
-    if (r) this.lastSearchDepth = r.depth;
-    return r ? { from: r.from, to: r.to } : null;
-  }
-
   // ─── AI turn ─────────────────────────────────────────────────────────────────
 
   /**
@@ -208,9 +197,13 @@ export class GessService implements OnDestroy {
   ): Promise<AiMove | null> {
     const worker = this.worker;
     if (!worker) {
-      // No worker: run the synchronous TS negamax fallback (keeps the game
-      // playable in environments without Worker support).
-      return Promise.resolve(Engine.getBestMove(board, player, timeBudgetMs));
+      // No worker: run the same WASM engine directly on the calling thread. It
+      // blocks the UI for the search, but keeps the game playable where Web
+      // Workers are unavailable (e.g. SSR or constrained test environments).
+      return wasmGetBestMove(board, player, timeBudgetMs).then(r => {
+        if (r) this.lastSearchDepth = r.depth;
+        return r;
+      });
     }
     return new Promise<AiMove | null>(resolve => {
       const onMessage = (ev: MessageEvent<AiMove | null>) => {
