@@ -1,11 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component } from '@angular/core';
+import { BoardComponent } from './components/board/board.component';
 
 @Component({
   selector: 'app-root',
-  imports: [],
-  templateUrl: './app.html',
-  styleUrl: './app.scss'
+  standalone: true,
+  imports: [BoardComponent],
+  template: '<app-board />',
 })
-export class App {
-  protected readonly title = signal('gess-game');
-}
+export class App {}

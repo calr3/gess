@@ -1,0 +1,674 @@
+@use 'sass:color';
+
+// ── Design tokens ────────────────────────────────────────────────────────────
+$cell: 30px;
+$board-bg: #c8a055;
+$border-zone: #9b7a3a;
+$grid-line: rgba(60, 30, 0, 0.45);
+$selected-fp-bg: rgba(255, 210, 0, 0.28);
+$selected-fp-border: rgba(255, 190, 0, 0.85);
+$hovered-fp-bg: rgba(80, 160, 255, 0.22);
+$valid-move-color: #38d45a;
+
+// ── Root ─────────────────────────────────────────────────────────────────────
+.game-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 16px;
+  min-height: 100vh;
+  background: #15152a;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  position: relative;
+}
+
+// ── Status bar ────────────────────────────────────────────────────────────────
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: #1e1e38;
+  border: 1px solid #2e2e58;
+  border-radius: 12px;
+  padding: 12px 20px;
+  width: 100%;
+  max-width: calc($cell * 20 + 44px);
+  box-sizing: border-box;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, background 0.2s;
+
+  &.active {
+    border-color: #f0c040;
+    background: rgba(240, 192, 64, 0.1);
+  }
+
+  &.winner-card {
+    border-color: #38d45a;
+    background: rgba(56, 212, 90, 0.12);
+  }
+}
+
+.stone-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.player-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.player-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.ring-count {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.stone-count {
+  font-size: 12px;
+  color: #888;
+}
+
+.game-message {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 14px;
+  color: #c8c8d8;
+  font-style: italic;
+}
+
+// Countdown shown under the status message when a no-capture draw is near.
+.draw-warning {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e0a84a;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(224, 168, 74, 0.12);
+}
+
+// Thin progress bar under the "… is thinking…" message. Width is driven from
+// the component at 30 FPS; the transition smooths between those frame updates.
+.ai-progress {
+  width: 70%;
+  max-width: 220px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.ai-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #f0c040, #ffd873);
+  transition: width 0.05s linear;
+}
+
+// ── Board + side panel (horizontal) ──────────────────────────────────────────
+.board-and-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+// ── Side panel ────────────────────────────────────────────────────────────────
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #1e1e38;
+  border: 1px solid #2e2e58;
+  border-radius: 12px;
+  padding: 18px 16px;
+  min-width: 300px;
+  align-self: stretch;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8888b0;
+  margin: 0;
+}
+
+.controller-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stone-preview.small {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.controller-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.controller-select {
+  background: #12122a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a70;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+
+  &:focus { border-color: #6060c0; }
+
+  // Locked while the AI is thinking for this player.
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+}
+
+.panel-divider {
+  border: none;
+  border-top: 1px solid #2e2e58;
+  margin: 0;
+}
+
+// ── Move record ───────────────────────────────────────────────────────────────
+.moves-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-variant-numeric: tabular-nums;
+
+  // Slim scrollbar
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a70 transparent;
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb { background: #3a3a70; border-radius: 3px; }
+}
+
+.moves-empty {
+  font-size: 13px;
+  color: #6a6a90;
+  font-style: italic;
+}
+
+.move-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr; // turn number, then black & white plies
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+
+  &:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
+}
+
+.move-ply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none; // don't select the notation text on a double-click-to-revert
+
+  &:hover { background: rgba(255, 202, 40, 0.16); }
+}
+
+// Placeholder cell keeping the grid aligned when a turn has no white reply yet.
+.move-ply-empty {
+  cursor: default;
+  &:hover { background: none; }
+}
+
+.move-num {
+  text-align: right;
+  color: #7a7aa0;
+}
+
+.move-notation {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  letter-spacing: 0.02em;
+  color: #d0d0e8;
+}
+
+// ── Board area ────────────────────────────────────────────────────────────────
+.board-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.corner {
+  width: 22px;
+}
+
+.col-label {
+  width: $cell;
+  text-align: center;
+  font-size: 11px;
+  color: #777;
+  user-select: none;
+}
+
+// Subtle highlight on the row/file labels of the square under the cursor.
+.col-label.label-active,
+.row-label.label-active {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.board-middle {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.row-labels {
+  display: flex;
+  flex-direction: column;
+}
+
+.row-label {
+  width: 22px;
+  height: $cell;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #777;
+  user-select: none;
+}
+
+// ── The grid ──────────────────────────────────────────────────────────────────
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(20, $cell);
+  grid-template-rows: repeat(20, $cell);
+  border-top: 1px solid $grid-line;
+  border-left: 1px solid $grid-line;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  position: relative; // anchor for the move-arrow overlay
+}
+
+// Arrow drawn from source→target centre when hovering a move in the record.
+.move-arrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 5; // above stones (1) and move-dots (2)
+
+  line {
+    stroke: #ffca28;
+    stroke-width: 3;
+    stroke-linecap: round;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+  }
+
+  // Live preview of the move being typed into the move-entry input.
+  &.typed-arrow line { stroke: #b06cf0; }
+}
+
+.cell {
+  width: $cell;
+  height: $cell;
+  box-sizing: border-box;
+  border-right: 1px solid $grid-line;
+  border-bottom: 1px solid $grid-line;
+  position: relative;
+  background: $board-bg;
+  cursor: default;
+  transition: background 0.08s;
+
+  // Off-board border ring: the board doesn't really exist out here, so keep it
+  // empty — never paint it like a board square (the highlight suppression below
+  // also stops the preview/selection overlays from drawing squares off the
+  // edge). Only the move-dot appears, marking where a piece can be sent off.
+  &.off-board {
+    background: transparent;
+    border-color: transparent;
+  }
+
+  // Ring-interior tints — ::before sits below stones (z-index 1) and all overlays
+  &.ring-white::before,
+  &.ring-black::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+  &.ring-white::before { background: rgba(255, 255, 255, 0.45); }
+  &.ring-black::before { background: rgba(0,   0,   0,   0.32); }
+
+  &.hovered-fp:not(.border-cell) {
+    background: color.mix($board-bg, #4090ff, 78%);
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: $hovered-fp-bg;
+    }
+  }
+
+  &.selected-fp:not(.border-cell) {
+    background: color.mix($board-bg, #ffd700, 65%);
+    box-shadow: inset 0 0 0 1px $selected-fp-border;
+  }
+
+  &.selected-centre:not(.border-cell) {
+    box-shadow: inset 0 0 0 2px #ffd700;
+  }
+
+  // Destination-footprint preview when hovering a valid move target
+  &.dest-fp:not(.border-cell) {
+    background: color.mix($board-bg, #00d4c8, 60%);
+    box-shadow: inset 0 0 0 2px rgba(0, 212, 200, 0.85);
+    // Override the selected-fp gold when source and dest overlap
+    &.selected-fp {
+      background: color.mix($board-bg, #00d4c8, 55%);
+    }
+  }
+
+  // Move-record hover: footprint background of both source & target.
+  &.move-fp:not(.off-board) {
+    background: color.mix($board-bg, #ffca28, 70%);
+  }
+
+  // The two centre squares get a ring; the target is emphasised more strongly.
+  &.move-from:not(.off-board) {
+    box-shadow: inset 0 0 0 2px rgba(255, 202, 40, 0.85);
+  }
+  &.move-to:not(.off-board) {
+    box-shadow: inset 0 0 0 3px #ffca28;
+  }
+
+  // Typed-move preview (move-entry input): same visualisation in purple.
+  &.typed-fp:not(.off-board) {
+    background: color.mix($board-bg, #b06cf0, 65%);
+  }
+  &.typed-from:not(.off-board) {
+    box-shadow: inset 0 0 0 2px rgba(176, 108, 240, 0.85);
+  }
+  &.typed-to:not(.off-board) {
+    box-shadow: inset 0 0 0 3px #b06cf0;
+  }
+
+  &.clickable {
+    cursor: pointer;
+
+    &:hover:not(.off-board):not(.selected-fp):not(.hovered-fp) {
+      background: color.adjust($board-bg, $lightness: 6%);
+    }
+  }
+}
+
+// The move *preview* must not paint board squares off the edge (the board isn't
+// really there). But selection highlights (selected-fp / hovered-fp) ARE shown on
+// the border ring, since a piece may legitimately be centred there.
+.board-grid .cell.off-board {
+  &.dest-fp {
+    background: transparent;
+    box-shadow: none;
+  }
+  &.dest-fp::after { content: none; }
+}
+
+// ── Stones ────────────────────────────────────────────────────────────────────
+.stone {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.white-stone {
+  background: radial-gradient(circle at 38% 32%, #ffffff, #c8c8c8);
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.5), inset -1px -1px 3px rgba(0,0,0,0.15);
+}
+
+.black-stone {
+  background: radial-gradient(circle at 38% 32%, #666666, #111111);
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.7), inset -1px -1px 3px rgba(0,0,0,0.4);
+}
+
+// ── Move indicator ────────────────────────────────────────────────────────────
+.move-dot {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  border: 2px solid $valid-move-color;
+  background: rgba(56, 212, 90, 0.25);
+  z-index: 2;
+  pointer-events: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.88); }
+}
+
+// ── Ring marker ────────────────────────────────────────────────────────────────
+// A small king icon in the empty central square of a highlighted ring, drawn
+// over the ::before tint (z-index 0) — coloured to match the ring's owner.
+.ring-king {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $cell * 0.62;
+  line-height: 1;
+  z-index: 2;
+  pointer-events: none;
+}
+.ring-king-white { color: #fdfdfd; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65); }
+.ring-king-black { color: #141414; text-shadow: 0 1px 1px rgba(255, 255, 255, 0.35); }
+
+// ── New Game button ───────────────────────────────────────────────────────────
+.btn-new-game {
+  padding: 9px 22px;
+  background: #2e2e58;
+  color: #e0e0e0;
+  border: 1px solid #4444a0;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: #3a3a80; }
+  &:active { background: #28285a; }
+}
+
+// ── Type-to-move entry ────────────────────────────────────────────────────────
+.move-entry {
+  display: flex;
+  gap: 8px;
+}
+
+.move-entry-input {
+  flex: 1;
+  min-width: 0;
+  background: #12122a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a70;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+
+  &::placeholder { color: #6a6a90; }
+  &:focus { border-color: #6060c0; }
+}
+
+.btn-move-entry {
+  padding: 6px 16px;
+  background: #2e2e58;
+  color: #e0e0e0;
+  border: 1px solid #4444a0;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: #3a3a80; }
+  &:active { background: #28285a; }
+}
+
+.move-entry-error {
+  font-size: 13px;
+  color: #ff8a8a;
+}
+
+.moves-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.btn-copy-moves {
+  padding: 4px 12px;
+  background: #2e2e58;
+  color: #e0e0e0;
+  border: 1px solid #4444a0;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: #3a3a80; }
+  &:active { background: #28285a; }
+}
+
+// ── Rules summary ─────────────────────────────────────────────────────────────
+.rules-summary {
+  max-width: calc($cell * 20 + 44px);
+  width: 100%;
+  background: #1a1a30;
+  border: 1px solid #2a2a50;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #aaa;
+
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #c0c0d8;
+    user-select: none;
+    &:hover { color: #e0e0f0; }
+  }
+
+  ul {
+    margin: 10px 0 4px;
+    padding-left: 20px;
+    line-height: 1.7;
+  }
+
+  em { color: #f0c040; font-style: normal; }
+  strong { color: #d0d0f0; }
+}
+
+// ── Winner banner (in side panel) ───────────────────────────────────────────────
+.winner-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 16px 12px;
+  border-radius: 10px;
+  border: 2px solid #f0c040;
+  background: rgba(240, 192, 64, 0.12);
+  animation: fade-in 0.25s ease;
+
+  &.white-win {
+    border-color: #d8d8e0;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  &.black-win {
+    border-color: #6a6a90;
+    background: rgba(0, 0, 0, 0.28);
+  }
+  &.draw {
+    border-color: #8a8aa0;
+    background: rgba(138, 138, 160, 0.14);
+    .winner-title { color: #c8c8dc; }
+  }
+
+  .trophy { font-size: 40px; line-height: 1; }
+
+  .winner-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #f0c040;
+  }
+
+  .winner-detail {
+    font-size: 12px;
+    color: #c0c0d8;
+    line-height: 1.4;
+  }
+}
+
+.btn-play-again {
+  margin-top: 8px;
+  padding: 9px 22px;
+  background: #f0c040;
+  color: #111;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: #ffd060; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

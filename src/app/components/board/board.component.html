@@ -1,0 +1,272 @@
+<div class="game-root">
+
+  <!-- ── Status bar ──────────────────────────────────────────────────────── -->
+  <div class="status-bar">
+    <div class="player-card" [class.active]="state.currentPlayer === 'white'" [class.winner-card]="state.winner === 'white'">
+      <div class="stone-preview white-stone"></div>
+      <div class="player-info">
+        <span class="player-name">White</span>
+        <span class="ring-count">{{ state.whiteRings }} ring{{ state.whiteRings !== 1 ? 's' : '' }}</span>
+        <span class="stone-count">{{ state.whiteStones }} stone{{ state.whiteStones !== 1 ? 's' : '' }}</span>
+      </div>
+    </div>
+
+    <div class="game-message">
+      <span>{{ state.message }}</span>
+      @if (turnsToDraw !== null && turnsToDraw <= 5) {
+        <div class="draw-warning">
+          {{ turnsToDraw }} turn{{ turnsToDraw !== 1 ? 's' : '' }} to a draw without a capture
+        </div>
+      }
+      @if (aiThinking) {
+        <div class="ai-progress" role="progressbar"
+             [attr.aria-valuenow]="aiProgress * 100" aria-valuemin="0" aria-valuemax="100">
+          <div class="ai-progress-fill" [style.width.%]="aiProgress * 100"></div>
+        </div>
+      }
+    </div>
+
+    <div class="player-card" [class.active]="state.currentPlayer === 'black'" [class.winner-card]="state.winner === 'black'">
+      <div class="stone-preview black-stone"></div>
+      <div class="player-info">
+        <span class="player-name">Black</span>
+        <span class="ring-count">{{ state.blackRings }} ring{{ state.blackRings !== 1 ? 's' : '' }}</span>
+        <span class="stone-count">{{ state.blackStones }} stone{{ state.blackStones !== 1 ? 's' : '' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Board + side panel ──────────────────────────────────────────────── -->
+  <div class="board-and-panel">
+
+    <!-- ── Board area ────────────────────────────────────────────────────── -->
+    <div class="board-area">
+
+      <!-- Column labels top -->
+      <div class="label-row">
+        <div class="corner"></div>
+        @for (c of displayCols; track c) { <div class="col-label" [class.label-active]="hoverCol === c">{{ colLabel(c) }}</div> }
+        <div class="corner"></div>
+      </div>
+
+      <div class="board-middle">
+        <div class="row-labels">
+          @for (r of displayRows; track r) { <div class="row-label" [class.label-active]="hoverRow === r">{{ rowLabel(r) }}</div> }
+        </div>
+
+        <div class="board-grid" #boardGrid (mouseleave)="onMouseLeave()">
+          @for (r of displayRows; track r) {
+            @for (c of displayCols; track c) {
+              <div
+                class="cell"
+                [class.off-board]="isOffBoard(r, c)"
+                [class.selected-fp]="selectedFP.has(r + ',' + c)"
+                [class.selected-centre]="state.selectedCenter?.row === r && state.selectedCenter?.col === c"
+                [class.valid-move]="validMoveCells.has(r + ',' + c)"
+                [class.hovered-fp]="hoveredFP.has(r + ',' + c)"
+                [class.dest-fp]="hoveredDestFP.has(r + ',' + c)"
+                [class.ring-white]="whiteRingCells.has(r + ',' + c)"
+                [class.ring-black]="blackRingCells.has(r + ',' + c)"
+                [class.clickable]="clickable.has(r + ',' + c)"
+                [class.move-fp]="moveFP.has(r + ',' + c)"
+                [class.move-from]="moveFromCell === r + ',' + c"
+                [class.move-to]="moveToCell === r + ',' + c"
+                [class.typed-fp]="typedFP.has(r + ',' + c)"
+                [class.typed-from]="typedFromCell === r + ',' + c"
+                [class.typed-to]="typedToCell === r + ',' + c"
+                (click)="onCellClick(r, c)"
+                (mouseenter)="onMouseEnter(r, c)"
+              >
+                @if (displayBoard[r][c]) {
+                  <div class="stone"
+                    [class.white-stone]="displayBoard[r][c] === 'white'"
+                    [class.black-stone]="displayBoard[r][c] === 'black'"
+                  ></div>
+                }
+                @if (!previewBoard && validMoveCells.has(r + ',' + c)) {
+                  <div class="move-dot"></div>
+                }
+                @if (whiteRingCells.has(r + ',' + c) || blackRingCells.has(r + ',' + c)) {
+                  <div class="ring-king"
+                    [class.ring-king-white]="whiteRingCells.has(r + ',' + c)"
+                    [class.ring-king-black]="blackRingCells.has(r + ',' + c)"
+                  >♚</div>
+                }
+              </div>
+            }
+          }
+
+          <!-- Arrow overlay for the move hovered in the record (pixel coords) -->
+          @if (moveArrow) {
+            <svg class="move-arrow">
+              <defs>
+                <marker id="move-arrowhead" markerWidth="6" markerHeight="6" refX="4.5" refY="3"
+                        orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#ffca28" />
+                </marker>
+              </defs>
+              <line [attr.x1]="moveArrow.x1" [attr.y1]="moveArrow.y1"
+                    [attr.x2]="moveArrow.x2" [attr.y2]="moveArrow.y2"
+                    marker-end="url(#move-arrowhead)" />
+            </svg>
+          }
+
+          <!-- Arrow overlay for the move being typed into the move-entry input -->
+          @if (typedArrow) {
+            <svg class="move-arrow typed-arrow">
+              <defs>
+                <marker id="typed-arrowhead" markerWidth="6" markerHeight="6" refX="4.5" refY="3"
+                        orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#b06cf0" />
+                </marker>
+              </defs>
+              <line [attr.x1]="typedArrow.x1" [attr.y1]="typedArrow.y1"
+                    [attr.x2]="typedArrow.x2" [attr.y2]="typedArrow.y2"
+                    marker-end="url(#typed-arrowhead)" />
+            </svg>
+          }
+        </div>
+
+        <div class="row-labels">
+          @for (r of displayRows; track r) { <div class="row-label" [class.label-active]="hoverRow === r">{{ rowLabel(r) }}</div> }
+        </div>
+      </div>
+
+      <!-- Column labels bottom -->
+      <div class="label-row">
+        <div class="corner"></div>
+        @for (c of displayCols; track c) { <div class="col-label" [class.label-active]="hoverCol === c">{{ colLabel(c) }}</div> }
+        <div class="corner"></div>
+      </div>
+
+    </div><!-- /board-area -->
+
+    <!-- ── Side panel ──────────────────────────────────────────────────────── -->
+    <div class="side-panel">
+
+      @if (state.winner === 'draw') {
+        <div class="winner-banner draw">
+          <div class="trophy">🤝</div>
+          <div class="winner-title">Draw</div>
+          <div class="winner-detail">{{ state.message }}</div>
+          <button class="btn-play-again" (click)="resetGame()">Play Again</button>
+        </div>
+        <hr class="panel-divider">
+      } @else if (state.winner) {
+        <div class="winner-banner" [class.white-win]="state.winner === 'white'" [class.black-win]="state.winner === 'black'">
+          <div class="trophy">🏆</div>
+          <div class="winner-title">{{ state.winner === 'white' ? 'White' : 'Black' }} Wins!</div>
+          <div class="winner-detail">{{ state.message }}</div>
+          <button class="btn-play-again" (click)="resetGame()">Play Again</button>
+        </div>
+        <hr class="panel-divider">
+      }
+
+      <h3 class="panel-title">Players</h3>
+
+      <div class="controller-row">
+        <div class="stone-preview white-stone small"></div>
+        <span class="controller-label">White</span>
+        <select class="controller-select"
+                [value]="whiteController"
+                [disabled]="isControllerLocked('white')"
+                (change)="setController('white', $event)">
+          <option value="human">Human</option>
+          <option value="easy">AI · Easy (0.5s)</option>
+          <option value="normal">AI · Normal (2s)</option>
+          <option value="hard">AI · Hard (15s)</option>
+          <option value="ultra">AI · Ultra (60s)</option>
+        </select>
+      </div>
+
+      <div class="controller-row">
+        <div class="stone-preview black-stone small"></div>
+        <span class="controller-label">Black</span>
+        <select class="controller-select"
+                [value]="blackController"
+                [disabled]="isControllerLocked('black')"
+                (change)="setController('black', $event)">
+          <option value="human">Human</option>
+          <option value="easy">AI · Easy (0.5s)</option>
+          <option value="normal">AI · Normal (2s)</option>
+          <option value="hard">AI · Hard (15s)</option>
+          <option value="ultra">AI · Ultra (60s)</option>
+        </select>
+      </div>
+
+      <hr class="panel-divider">
+
+      <button class="btn-new-game" (click)="resetGame()">New Game</button>
+
+      <hr class="panel-divider">
+
+      <h3 class="panel-title">Type a move</h3>
+      <div class="move-entry">
+        <input class="move-entry-input" type="text" placeholder="e.g. h6-i7"
+               autocomplete="off" spellcheck="false"
+               [value]="moveInput"
+               (input)="onMoveInput($any($event.target).value)"
+               (keyup.enter)="submitMoveInput()">
+        <button class="btn-move-entry" (click)="submitMoveInput()">Play</button>
+      </div>
+      @if (moveInputError) {
+        <div class="move-entry-error">{{ moveInputError }}</div>
+      }
+
+      <hr class="panel-divider">
+
+      <h3 class="panel-title">Moves</h3>
+      <div class="moves-list" #movesList>
+        @if (state.moves.length === 0) {
+          <div class="moves-empty">No moves yet</div>
+        } @else {
+          @for (pair of movePairs; track pair.num) {
+            <div class="move-row">
+              <span class="move-num">{{ pair.num }}.</span>
+              <div class="move-ply" title="Hover to preview · double-click to return here"
+                   (mouseenter)="onMoveEnter(pair.black)" (mouseleave)="onMoveLeave()"
+                   (dblclick)="revertToMove(pair.black)">
+                <span class="stone-preview small black-stone"></span>
+                <span class="move-notation">{{ pair.black.notation }}</span>
+              </div>
+              @if (pair.white) {
+                <div class="move-ply" title="Hover to preview · double-click to return here"
+                     (mouseenter)="onMoveEnter(pair.white)" (mouseleave)="onMoveLeave()"
+                     (dblclick)="revertToMove(pair.white)">
+                  <span class="stone-preview small white-stone"></span>
+                  <span class="move-notation">{{ pair.white.notation }}</span>
+                </div>
+              } @else {
+                <div class="move-ply move-ply-empty"></div>
+              }
+            </div>
+          }
+        }
+      </div>
+      @if (state.moves.length > 0) {
+        <div class="moves-footer">
+          <button class="btn-copy-moves" (click)="copyMoveHistory()" title="Copy move history to clipboard">
+            {{ copied ? 'Copied!' : 'Copy' }}
+          </button>
+        </div>
+      }
+    </div><!-- /side-panel -->
+
+  </div><!-- /board-and-panel -->
+
+  <!-- ── Rules summary ────────────────────────────────────────────────────── -->
+  <details class="rules-summary">
+    <summary>How to play</summary>
+    <ul>
+      <li>Select any 3×3 area that contains <em>only your stones</em> (at least one).</li>
+      <li>The 8 surrounding cells indicate available movement directions; a <strong>centre stone</strong> gives unlimited range (otherwise max 3 squares).</li>
+      <li>Enemy stones in the path are captured; your own stones outside the piece block it.</li>
+      <li>Stones landing on the outermost row/column are removed.</li>
+      <li>A <strong>ring</strong> is a 3×3 block — 8 of your stones around an empty centre (highlighted, with a <strong>♚</strong> marking the centre). You can have <em>several at once</em>.</li>
+      <li><strong>Win:</strong> leave your opponent with <em>no rings left</em>.</li>
+      <li>You lose only when you have <em>no rings at all</em> — so destroying one of your own rings (or letting it be captured) is fine, as long as you still have another.</li>
+      <li><strong>Draw:</strong> if {{ drawLimit }} turns pass with no capture (by either side, including your own stones), the game is a draw. Any capture resets the count.</li>
+    </ul>
+  </details>
+
+</div>
