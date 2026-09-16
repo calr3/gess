@@ -50,6 +50,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "ort-wasm-simd-threaded*.{wasm,mjs}",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "ort"
               }
             ],
             "styles": [

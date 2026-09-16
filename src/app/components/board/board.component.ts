@@ -9,8 +9,9 @@ import { Board, GameState, MoveRecord, Player, Position } from '../../models/gam
 
 interface Arrow { x1: number; y1: number; x2: number; y2: number; }
 
-// 'human' or one of the negamax difficulty levels (each just a search time budget).
-type Controller = 'human' | 'easy' | 'normal' | 'hard' | 'ultra';
+// 'human', one of the negamax difficulty levels (each just a search time
+// budget), or 'neural': the trained network playing its policy directly.
+type Controller = 'human' | 'easy' | 'normal' | 'hard' | 'ultra' | 'neural';
 type AiLevel = Exclude<Controller, 'human'>;
 
 // Per-AI think-time budget (ms).
@@ -19,6 +20,8 @@ const AI_CONFIG: Record<AiLevel, number> = {
   normal: 2000,
   hard:   15000,
   ultra:  60000,
+  // The network answers in milliseconds; this only paces the thinking bar.
+  neural: 1000,
 };
 
 function isAi(c: Controller): c is AiLevel { return c !== 'human'; }
@@ -539,7 +542,7 @@ export class BoardComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.aiTimer = setTimeout(() => {
       this.aiTimer = null;
       this.startThinkingProgress(budgetMs);
-      this.gess.executeAiMove(budgetMs);
+      this.gess.executeAiMove(budgetMs, ctrl === 'neural' ? 'neural' : 'wasm');
     }, 400);
   }
 

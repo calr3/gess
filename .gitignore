@@ -46,3 +46,6 @@ Thumbs.db
 
 # Rust / WASM build output
 /wasm-engine/target
+
+# Trained network for the neural engine (built from the pgx repo; see README)
+public/models/*.onnx

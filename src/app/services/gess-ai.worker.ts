@@ -8,12 +8,18 @@
 // TypeScript search has been removed (gess-engine now holds only game logic).
 
 import { getBestMove } from './gess-wasm';
+import { getBestMove as neuralBestMove } from './gess-nn';
 import type { Board, Player } from '../models/game.model';
+
+/** Which engine plays the move: the Rust/WASM negamax search, or the trained
+ *  neural network (policy only, no search). */
+export type AiEngine = 'wasm' | 'neural';
 
 export interface AiRequest {
   board: Board;
   player: Player;
   timeBudgetMs: number;
+  engine?: AiEngine;
 }
 
 // `postMessage` is typed via the default DOM lib here; cast to the worker's
@@ -21,9 +27,13 @@ export interface AiRequest {
 const reply = postMessage as unknown as (message: unknown) => void;
 
 addEventListener('message', async (event: MessageEvent<AiRequest>) => {
-  const { board, player, timeBudgetMs } = event.data;
+  const { board, player, timeBudgetMs, engine } = event.data;
   try {
-    reply(await getBestMove(board, player, timeBudgetMs));
+    reply(
+      engine === 'neural'
+        ? await neuralBestMove(board, player)
+        : await getBestMove(board, player, timeBudgetMs),
+    );
   } catch (err) {
     // Don't leave the UI hanging on "thinking…" — log and reply null.
     console.error('[Gess AI] search failed:', err);
