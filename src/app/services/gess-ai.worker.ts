@@ -8,18 +8,21 @@
 // TypeScript search has been removed (gess-engine now holds only game logic).
 
 import { getBestMove } from './gess-wasm';
-import { getBestMove as neuralBestMove, preload as preloadNeural } from './gess-nn';
+import { getBestMove as neuralBestMove, preload as preloadNeural, searchBestMove } from './gess-nn';
 import type { Board, Player } from '../models/game.model';
 
-/** Which engine plays the move: the Rust/WASM negamax search, or the trained
- *  neural network (policy only, no search). */
-export type AiEngine = 'wasm' | 'neural';
+/** Which engine plays the move: the Rust/WASM negamax search, the trained
+ *  neural network on its own (policy only, no search), or the network guiding
+ *  a tree search for the time budget. */
+export type AiEngine = 'wasm' | 'neural' | 'neural-mcts';
 
 export interface AiRequest {
   board: Board;
   player: Player;
   timeBudgetMs: number;
   engine?: AiEngine;
+  /** Consecutive captureless turns so far (the neural search needs it to see draws). */
+  noCaptureStreak?: number;
 }
 
 // `postMessage` is typed via the default DOM lib here; cast to the worker's
@@ -31,12 +34,14 @@ const reply = postMessage as unknown as (message: unknown) => void;
 preloadNeural();
 
 addEventListener('message', async (event: MessageEvent<AiRequest>) => {
-  const { board, player, timeBudgetMs, engine } = event.data;
+  const { board, player, timeBudgetMs, engine, noCaptureStreak = 0 } = event.data;
   try {
     reply(
       engine === 'neural'
         ? await neuralBestMove(board, player)
-        : await getBestMove(board, player, timeBudgetMs),
+        : engine === 'neural-mcts'
+          ? await searchBestMove(board, player, noCaptureStreak, timeBudgetMs)
+          : await getBestMove(board, player, timeBudgetMs),
     );
   } catch (err) {
     // Don't leave the UI hanging on "thinking…" — log and reply null.

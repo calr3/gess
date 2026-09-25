@@ -4,14 +4,18 @@ import {
 } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { GessService } from '../../services/gess.service';
+import type { AiEngine } from '../../services/gess-ai.worker';
 import { NO_CAPTURE_DRAW_LIMIT } from '../../services/gess-engine';
 import { Board, GameState, MoveRecord, Player, Position } from '../../models/game.model';
 
 interface Arrow { x1: number; y1: number; x2: number; y2: number; }
 
 // 'human', one of the negamax difficulty levels (each just a search time
-// budget), or 'neural': the trained network playing its policy directly.
-type Controller = 'human' | 'easy' | 'normal' | 'hard' | 'ultra' | 'neural';
+// budget), 'neural': the trained network playing its policy directly, or one of
+// the 'neural…' levels: the network guiding a tree search for that long.
+type Controller =
+  | 'human' | 'easy' | 'normal' | 'hard' | 'ultra'
+  | 'neural' | 'neural2' | 'neural5' | 'neural15' | 'neural60';
 type AiLevel = Exclude<Controller, 'human'>;
 
 // Per-AI think-time budget (ms).
@@ -22,7 +26,16 @@ const AI_CONFIG: Record<AiLevel, number> = {
   ultra:  60000,
   // The network answers in milliseconds; this only paces the thinking bar.
   neural: 1000,
+  neural2:  2000,
+  neural5:  5000,
+  neural15: 15000,
+  neural60: 60000,
 };
+
+function engineFor(level: AiLevel): AiEngine {
+  if (level === 'neural') return 'neural';
+  return level.startsWith('neural') ? 'neural-mcts' : 'wasm';
+}
 
 function isAi(c: Controller): c is AiLevel { return c !== 'human'; }
 
@@ -542,7 +555,7 @@ export class BoardComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.aiTimer = setTimeout(() => {
       this.aiTimer = null;
       this.startThinkingProgress(budgetMs);
-      this.gess.executeAiMove(budgetMs, ctrl === 'neural' ? 'neural' : 'wasm');
+      this.gess.executeAiMove(budgetMs, engineFor(ctrl));
     }, 400);
   }
 

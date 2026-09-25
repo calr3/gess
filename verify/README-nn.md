@@ -23,3 +23,17 @@ node --experimental-strip-types verify/nn-move-parity.ts  # ONNX model matches, 
 
 The second needs `public/models/gess-policy.onnx` in place (it is git-ignored;
 build it from a checkpoint with the pgx export script).
+
+The tree search has two more (bundled with esbuild, since they import the app's
+modules):
+
+```bash
+# the search's flat-board rules and encoder match gess-engine / buildObservation
+node_modules/.bin/esbuild verify/flat-rules-parity.ts --bundle --platform=node \
+  --format=esm --outfile=/tmp/flat-rules-parity.mjs && ~/node22/bin/node /tmp/flat-rules-parity.mjs
+
+# the search finds wins, avoids losing moves and reuses its tree (CPU, ~1 min)
+node_modules/.bin/esbuild verify/mcts-check.ts --bundle --platform=node --format=esm \
+  --external:onnxruntime-web --outfile=node_modules/.cache/mcts-check.mjs \
+  && ~/node22/bin/node node_modules/.cache/mcts-check.mjs
+```

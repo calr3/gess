@@ -71,3 +71,32 @@ export function buildObservation(
   }
   return obs;
 }
+
+/**
+ * buildObservation for a flat board (see gess-flat): `me` is the mover's stone
+ * value and `source` the selected piece's cell index, or -1. Writes the
+ * observation into `out` at `offset`, for filling a batch in place.
+ */
+export function writeObservation(
+  board: Int8Array,
+  me: number,
+  source: number,
+  out: Float32Array,
+  offset: number,
+): void {
+  const opp = 3 - me;
+  const stage = source >= 0 ? 1 : 0;
+  const sr = source >= 0 ? Math.floor(source / 20) : -10;
+  const sc = source >= 0 ? source % 20 : -10;
+  out.fill(0, offset, offset + OBS_LENGTH);
+  for (let row = PLAY_MIN; row <= PLAY_MAX; row++) {
+    for (let col = PLAY_MIN; col <= PLAY_MAX; col++) {
+      const cell = board[row * 20 + col];
+      const base = offset + ((row - PLAY_MIN) * OBS_SIZE + (col - PLAY_MIN)) * OBS_PLANES;
+      if (cell === me) out[base] = 1;
+      else if (cell === opp) out[base + 1] = 1;
+      if (Math.abs(row - sr) <= 1 && Math.abs(col - sc) <= 1) out[base + 2] = 1;
+      out[base + 3] = stage;
+    }
+  }
+}

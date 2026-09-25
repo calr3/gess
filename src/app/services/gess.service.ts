@@ -163,7 +163,7 @@ export class GessService implements OnDestroy {
     // Let the human see that the AI is thinking (the worker now does the work).
     this.sub$.next({ ...s, message: `${cap(player)} (AI) is thinking…` });
 
-    this.requestAiMove(s.board, player, timeBudgetMs, engine).then(best => {
+    this.requestAiMove(s.board, player, timeBudgetMs, engine, s.noCaptureStreak).then(best => {
       // Drop the result if the game moved on (reset, new turn, etc.) meanwhile.
       // A superseded request leaves aiBusy alone — a newer request now owns it.
       if (requestId !== this.aiRequestId) return;
@@ -194,12 +194,16 @@ export class GessService implements OnDestroy {
   /** Resolve the AI's chosen move, off-thread via the worker when available. */
   private requestAiMove(
     board: Board, player: Player, timeBudgetMs: number, engine: AiEngine = 'wasm',
+    noCaptureStreak = 0,
   ): Promise<AiMove | null> {
     const worker = this.worker;
     if (!worker) {
-      if (engine === 'neural') {
+      if (engine === 'neural' || engine === 'neural-mcts') {
         // Same fallback as below: run it on the calling thread.
-        return import('./gess-nn').then(nn => nn.getBestMove(board, player));
+        return import('./gess-nn').then(nn =>
+          engine === 'neural'
+            ? nn.getBestMove(board, player)
+            : nn.searchBestMove(board, player, noCaptureStreak, timeBudgetMs));
       }
       // No worker: run the same WASM engine directly on the calling thread. It
       // blocks the UI for the search, but keeps the game playable where Web
@@ -217,7 +221,7 @@ export class GessService implements OnDestroy {
         resolve(result);
       };
       worker.addEventListener('message', onMessage);
-      const request: AiRequest = { board, player, timeBudgetMs, engine };
+      const request: AiRequest = { board, player, timeBudgetMs, engine, noCaptureStreak };
       worker.postMessage(request);
     });
   }

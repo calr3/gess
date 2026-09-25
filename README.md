@@ -5,20 +5,30 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 ## Neural engine
 
 Alongside the Rust/WASM negamax search, the app can play with the AlphaZero-style
-network trained in the pgx repo: pick "AI · Neural (policy)" as a player's
-controller. The network scores all 400 squares at once, so a move is two forward
-passes — the piece to move, then its destination — and the best legal square is
-played. There is no search behind it yet, so it answers instantly but is weaker
-than the network with MCTS.
+network trained in the pgx repo. The network scores all 400 squares at once, so a
+move is two decisions — the piece to move, then its destination.
 
-It runs through `onnxruntime-web`, using WebGPU when the browser has it and
-WebAssembly otherwise (the runtime files are copied from `node_modules` by the
-build and served from `/ort`).
+- "AI · Neural (policy)" plays the network's top legal choice at each step, with
+  no search: instant, but the weakest.
+- "AI · Neural (2s / 5s / 15s / 60s)" run an AlphaZero-style tree search (PUCT)
+  guided by the network for that long (`src/app/services/gess-mcts.ts`). The
+  network evaluations are batched — many leaves per call, spread by a virtual
+  loss — and the next batch is selected while the GPU works on the current one.
+  The tree is kept between moves and reused. A move that wins on the spot is
+  played without searching.
+
+It runs through `onnxruntime-web` in the AI worker, using WebGPU when the browser
+has a hardware GPU and WebAssembly otherwise (the runtime files are copied from
+`node_modules` by the build and served from `/ort`). The model is loaded when the
+page opens; on WebGPU the worker then times a few batch sizes and uses the
+smallest one close to the best throughput. The browser console logs the choice
+and, after each search, its evaluations per second.
 
 The model file is not in git. Build it from a training checkpoint with
 `examples/alphazero/export_onnx.py` in the pgx repo and copy the result to
 `public/models/gess-policy.onnx`. See `verify/README-nn.md` for the parity
-checks that confirm the encoder and exported model still match training.
+checks that confirm the encoder and exported model still match training, and
+for the search's own checks.
 
 ## Development server
 
