@@ -12,10 +12,12 @@ interface Arrow { x1: number; y1: number; x2: number; y2: number; }
 
 // 'human', one of the negamax difficulty levels (each just a search time
 // budget), 'neural': the trained network playing its policy directly, or one of
-// the 'neural…' levels: the network guiding a tree search for that long.
+// the 'neural…' levels: the network guiding a tree search for that long, or
+// 'random': any move that doesn't lose on the spot.
 type Controller =
   | 'human' | 'easy' | 'normal' | 'hard' | 'ultra'
-  | 'neural' | 'neural2' | 'neural5' | 'neural15' | 'neural60';
+  | 'neural' | 'neural2' | 'neural5' | 'neural15' | 'neural60'
+  | 'random';
 type AiLevel = Exclude<Controller, 'human'>;
 
 // Per-AI think-time budget (ms).
@@ -30,9 +32,12 @@ const AI_CONFIG: Record<AiLevel, number> = {
   neural5:  5000,
   neural15: 15000,
   neural60: 60000,
+  // Instant too; paces the thinking bar.
+  random: 500,
 };
 
 function engineFor(level: AiLevel): AiEngine {
+  if (level === 'random') return 'random';
   if (level === 'neural') return 'neural';
   return level.startsWith('neural') ? 'neural-mcts' : 'wasm';
 }

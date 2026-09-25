@@ -198,6 +198,9 @@ export class GessService implements OnDestroy {
   ): Promise<AiMove | null> {
     const worker = this.worker;
     if (!worker) {
+      if (engine === 'random') {
+        return import('./gess-random').then(r => r.randomMove(board, player, noCaptureStreak));
+      }
       if (engine === 'neural' || engine === 'neural-mcts') {
         // Same fallback as below: run it on the calling thread.
         return import('./gess-nn').then(nn =>

@@ -9,12 +9,13 @@
 
 import { getBestMove } from './gess-wasm';
 import { getBestMove as neuralBestMove, preload as preloadNeural, searchBestMove } from './gess-nn';
+import { randomMove } from './gess-random';
 import type { Board, Player } from '../models/game.model';
 
 /** Which engine plays the move: the Rust/WASM negamax search, the trained
- *  neural network on its own (policy only, no search), or the network guiding
- *  a tree search for the time budget. */
-export type AiEngine = 'wasm' | 'neural' | 'neural-mcts';
+ *  neural network on its own (policy only, no search), the network guiding a
+ *  tree search for the time budget, or random moves that don't lose outright. */
+export type AiEngine = 'wasm' | 'neural' | 'neural-mcts' | 'random';
 
 export interface AiRequest {
   board: Board;
@@ -37,11 +38,10 @@ addEventListener('message', async (event: MessageEvent<AiRequest>) => {
   const { board, player, timeBudgetMs, engine, noCaptureStreak = 0 } = event.data;
   try {
     reply(
-      engine === 'neural'
-        ? await neuralBestMove(board, player)
-        : engine === 'neural-mcts'
-          ? await searchBestMove(board, player, noCaptureStreak, timeBudgetMs)
-          : await getBestMove(board, player, timeBudgetMs),
+      engine === 'random' ? randomMove(board, player, noCaptureStreak)
+        : engine === 'neural' ? await neuralBestMove(board, player)
+        : engine === 'neural-mcts' ? await searchBestMove(board, player, noCaptureStreak, timeBudgetMs)
+        : await getBestMove(board, player, timeBudgetMs),
     );
   } catch (err) {
     // Don't leave the UI hanging on "thinking…" — log and reply null.
