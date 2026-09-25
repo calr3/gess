@@ -1,7 +1,8 @@
 @use 'sass:color';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
-$cell: 30px;
+// Board square size: a CSS variable so it can shrink to fit narrow screens.
+$cell: var(--cell);
 $board-bg: #c8a055;
 $border-zone: #9b7a3a;
 $grid-line: rgba(60, 30, 0, 0.45);
@@ -22,6 +23,7 @@ $valid-move-color: #38d45a;
   color: #e0e0e0;
   font-family: 'Segoe UI', system-ui, sans-serif;
   position: relative;
+  --cell: 30px;
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
@@ -454,10 +456,7 @@ $valid-move-color: #38d45a;
 // ── Stones ────────────────────────────────────────────────────────────────────
 .stone {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  right: 3px;
-  bottom: 3px;
+  inset: calc($cell * 0.1);
   border-radius: 50%;
   z-index: 1;
 }
@@ -475,7 +474,7 @@ $valid-move-color: #38d45a;
 // ── Move indicator ────────────────────────────────────────────────────────────
 .move-dot {
   position: absolute;
-  inset: 8px;
+  inset: calc($cell * 0.27);
   border-radius: 50%;
   border: 2px solid $valid-move-color;
   background: rgba(56, 212, 90, 0.25);
@@ -498,7 +497,7 @@ $valid-move-color: #38d45a;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: $cell * 0.62;
+  font-size: calc($cell * 0.62);
   line-height: 1;
   z-index: 2;
   pointer-events: none;
@@ -671,4 +670,38 @@ $valid-move-color: #38d45a;
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+// ── Narrow screens ────────────────────────────────────────────────────────────
+// Too narrow for the board and side panel side by side: stack the panel below
+// the board, and shrink the squares so the board (plus its labels) fits the
+// viewport width.
+@media (max-width: 1000px) {
+  .game-root {
+    padding: 16px 8px;
+    // 100vw minus the root padding (2 × 8px) and the row labels (2 × 22px).
+    --cell: min(30px, (100vw - 60px) / 20);
+  }
+
+  .status-bar {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .player-card {
+    padding: 6px 8px;
+  }
+
+  .board-and-panel {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .side-panel {
+    min-width: 0;
+    width: 100%;
+    max-width: calc($cell * 20 + 44px);
+    align-self: center;
+  }
 }
