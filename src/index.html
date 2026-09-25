@@ -5,6 +5,20 @@
   <title>GessGame</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script>
+    // Without cross-origin isolation headers from the server, get them from
+    // coi-sw.js instead: register it, then reload once so it serves the page.
+    if (!window.crossOriginIsolated && window.isSecureContext && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('coi-sw.js').then(function () {
+        if (sessionStorage.getItem('coiReloaded')) return; // don't loop if it didn't help
+        function reload() { sessionStorage.setItem('coiReloaded', '1'); location.reload(); }
+        if (navigator.serviceWorker.controller) reload();
+        else navigator.serviceWorker.addEventListener('controllerchange', reload);
+      });
+    } else if (window.crossOriginIsolated) {
+      sessionStorage.removeItem('coiReloaded');
+    }
+  </script>
 </head>
 <body>
   <app-root></app-root>
