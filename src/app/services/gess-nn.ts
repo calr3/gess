@@ -17,11 +17,15 @@ import type { Board, Player, Position } from '../models/game.model';
 import { getValidMoves, isValidFootprintCenter, SIZE } from './gess-engine';
 import { actionSquare, buildObservation, OBS_PLANES, OBS_SIZE } from './gess-nn-obs';
 
-const MODEL_URL = 'models/gess-policy.onnx';
+// Resolved against this bundle's own URL (the build output sits next to
+// models/ and ort/), so they work in the worker and under any base href.
+const MODEL_URL = new URL('models/gess-policy.onnx', import.meta.url).href;
 
 // Serve onnxruntime's WebAssembly binaries from our own origin (copied into
-// public/ort) rather than a CDN, so the app works offline.
-ort.env.wasm.wasmPaths = 'ort/';
+// public/ort) rather than a CDN, so the app works offline. This must be an
+// absolute URL: onnxruntime import()s from it, and a bare 'ort/' is treated as
+// a module specifier and fails to resolve.
+ort.env.wasm.wasmPaths = new URL('ort/', import.meta.url).href;
 
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let backendUsed = '';
@@ -49,8 +53,18 @@ async function session(): Promise<ort.InferenceSession> {
       }
       throw new Error('no usable onnxruntime backend');
     })();
+    // Don't cache a failure (e.g. a dropped download): let the next use retry.
+    sessionPromise.catch(() => { sessionPromise = null; });
   }
   return sessionPromise;
+}
+
+/**
+ * Start downloading the model and creating the session in the background, so
+ * the first neural move doesn't wait for the ~29 MB download.
+ */
+export function preload(): void {
+  session().catch(err => console.warn('[Gess NN] preload failed:', err));
 }
 
 export interface NeuralEvaluation {

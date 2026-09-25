@@ -8,7 +8,7 @@
 // TypeScript search has been removed (gess-engine now holds only game logic).
 
 import { getBestMove } from './gess-wasm';
-import { getBestMove as neuralBestMove } from './gess-nn';
+import { getBestMove as neuralBestMove, preload as preloadNeural } from './gess-nn';
 import type { Board, Player } from '../models/game.model';
 
 /** Which engine plays the move: the Rust/WASM negamax search, or the trained
@@ -25,6 +25,10 @@ export interface AiRequest {
 // `postMessage` is typed via the default DOM lib here; cast to the worker's
 // single-argument form so we don't need the conflicting webworker lib globals.
 const reply = postMessage as unknown as (message: unknown) => void;
+
+// The worker is created at page load, so fetch the network now rather than on
+// the first neural move.
+preloadNeural();
 
 addEventListener('message', async (event: MessageEvent<AiRequest>) => {
   const { board, player, timeBudgetMs, engine } = event.data;
