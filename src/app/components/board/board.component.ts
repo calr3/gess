@@ -5,7 +5,7 @@ import {
 import { Subscription } from 'rxjs';
 import { GessService } from '../../services/gess.service';
 import type { AiEngine } from '../../services/gess-ai.worker';
-import { NO_CAPTURE_DRAW_LIMIT } from '../../services/gess-engine';
+import { QUIET_MOVE_LIMIT } from '../../services/gess-engine';
 import { Board, GameState, MoveRecord, Player, Position } from '../../models/game.model';
 
 interface Arrow { x1: number; y1: number; x2: number; y2: number; }
@@ -114,17 +114,17 @@ export class BoardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   get displayBoard(): Board { return this.previewBoard ?? this.state.board; }
 
-  /** The no-capture draw limit, surfaced for the "How to play" text. */
-  readonly drawLimit = NO_CAPTURE_DRAW_LIMIT;
+  /** The quiet-move limit, surfaced for the "How to play" text. */
+  readonly quietMoveLimit = QUIET_MOVE_LIMIT;
 
   /**
-   * Turns left before a forced no-capture draw, or null while the game is over
-   * (a win/loss/draw is already decided) — the template only surfaces it once
-   * it has dropped to 5 or fewer.
+   * Moves left before the game is decided on stones for want of a capture, or
+   * null while the game is over — the template only surfaces it once it has
+   * dropped to 5 or fewer.
    */
-  get turnsToDraw(): number | null {
+  get movesToStoneCount(): number | null {
     if (!this.state || this.state.winner) return null;
-    return Math.max(0, NO_CAPTURE_DRAW_LIMIT - this.state.noCaptureStreak);
+    return Math.max(0, QUIET_MOVE_LIMIT - this.state.noCaptureStreak);
   }
 
   // The board is a 20×20 grid: the inner 18×18 (indices 1‑18) is the playing

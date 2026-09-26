@@ -40,7 +40,7 @@ export interface GameState {
   whiteStones: number;
   blackStones: number;
   moves: MoveRecord[];
-  /** Consecutive turns (each player's move counts as one) ending without a
-   *  capture. Reaching NO_CAPTURE_DRAW_LIMIT ends the game in a draw. */
+  /** Consecutive moves (each player's move counts as one) ending without a
+   *  capture. Reaching QUIET_MOVE_LIMIT ends the game, decided on stones. */
   noCaptureStreak: number;
 }

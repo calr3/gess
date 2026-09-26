@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Pure Gess game logic — framework-free move/ring/draw rules.
+// Pure Gess game logic — framework-free move/ring/quiet-move rules.
 //
 // Used by GessService and the board component for move legality, captures, ring
-// detection, and the draw rule. Everything here is a pure function of its
-// arguments. No Angular imports. The AI search lives entirely in the Rust→WASM
-// engine (gess-wasm); there is no TypeScript search any more.
+// detection, and the quiet-move rule. Everything here is a pure function of its
+// arguments. No Angular imports. The negamax AI lives in the Rust→WASM engine
+// (gess-wasm), and the neural search in gess-mcts (on gess-flat's copy of these
+// rules).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Board, Cell, Player, Position } from '../models/game.model';
@@ -29,10 +30,13 @@ export const TIME_BUDGET_MS = 10_000;
 // ─── Move logic ──────────────────────────────────────────────────────────────
 
 /**
- * Returns true iff the 3×3 centered at (row,col) is a legal footprint for player.
- * The centre may be anywhere on the 20×20 grid — including the border ring
- * (indices 0 and 19) — so a piece can be centred just off the playing area, with
- * the rest of its footprint hanging into the empty margin (cells outside 0..19).
+ * Returns true iff the 3×3 centered at (row,col) is a legal footprint for player:
+ * none of the opponent's stones anywhere in it, and at least one of the player's
+ * among the eight cells around the centre (a lone centre stone can't move, so it
+ * isn't a piece — as in pgx). The centre may be anywhere on the 20×20 grid —
+ * including the border ring (indices 0 and 19) — so a piece can be centred just
+ * off the playing area, with the rest of its footprint hanging into the empty
+ * margin (cells outside 0..19).
  */
 export function isValidFootprintCenter(row: number, col: number, board: Board, player: Player): boolean {
   if (row < 0 || row >= SIZE || col < 0 || col >= SIZE) return false;
@@ -44,7 +48,7 @@ export function isValidFootprintCenter(row: number, col: number, board: Board, p
       if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) continue; // off-board margin is empty
       const cell = board[r][c];
       if (cell === opp) return false;
-      if (cell === player) hasOwn = true;
+      if (cell === player && (dr !== 0 || dc !== 0)) hasOwn = true;
     }
   }
   return hasOwn;
@@ -219,10 +223,13 @@ export function countStones(board: Board, player: Player): number {
   return n;
 }
 
-// ─── No-capture draw rule ────────────────────────────────────────────────────
-// If neither side captures a stone for this many consecutive turns (each
-// player's move counts as one turn), the game is drawn — a "no progress" rule.
-export const NO_CAPTURE_DRAW_LIMIT = 20;
+// ─── Quiet-move rule ─────────────────────────────────────────────────────────
+// If neither side captures a stone for this many consecutive moves (each
+// player's move counts as one), the game ends and is decided on the stones left
+// on the board: more stones wins, and only an exact tie is a draw. These are the
+// rules of the training environment (pgx gess v1); verify/pgx-conformance.ts
+// checks the app against it.
+export const QUIET_MOVE_LIMIT = 20;
 
 /** The total number of stones on the board (both colours). */
 export function totalStones(board: Board): number {
@@ -241,29 +248,47 @@ export function wasCapture(before: Board, after: Board): boolean {
 }
 
 /** Outcome of the position after a move, from the mover's point of view. */
-export type Outcome = 'mover-wins' | 'mover-loses' | 'both-lose' | 'draw' | 'ongoing';
+export type Outcome =
+  | 'mover-wins' | 'mover-loses' | 'both-lose'                    // on rings
+  | 'mover-wins-on-stones' | 'mover-loses-on-stones' | 'draw'     // at the quiet-move limit
+  | 'ongoing';
+
+/** Whether an outcome is a win for the mover, a loss, or a draw (null: play on). */
+export function outcomeResult(outcome: Outcome): 1 | 0 | -1 | null {
+  switch (outcome) {
+    case 'mover-wins': case 'mover-wins-on-stones': return 1;
+    case 'mover-loses': case 'mover-loses-on-stones': case 'both-lose': return -1;
+    case 'draw': return 0;
+    default: return null;
+  }
+}
 
 /**
  * Decide the game outcome after the mover has played, given the post-move ring
- * counts and the resulting no-capture streak (the count of consecutive turns,
+ * and stone counts and the resulting quiet-move count (consecutive moves,
  * including this one, that ended without a capture).
  *
- * Win/loss by ring count takes STRICT PRECEDENCE over the no-capture draw: a
- * move that empties a side's rings on the very turn the draw limit is reached is
- * decisive, not a draw. So the ring checks are evaluated before the streak.
+ * Rings take STRICT PRECEDENCE over the quiet-move limit: a move that empties a
+ * side's rings on the very move the limit is reached is decided on rings.
  *   - mover has no rings, opponent has none → both lost; the mover moved last,
  *     so the mover loses (`both-lose`);
  *   - mover has no rings → mover destroyed their own last ring → `mover-loses`;
  *   - opponent has no rings → `mover-wins`;
- *   - otherwise, streak ≥ limit → `draw`; else `ongoing`.
+ *   - otherwise, at the limit → decided on stones (`mover-wins-on-stones`,
+ *     `mover-loses-on-stones`, or `draw` on an exact tie); else `ongoing`.
  */
 export function resolveOutcome(
-  moverRings: number, oppRings: number, noCaptureStreak: number,
+  moverRings: number, oppRings: number, quietMoves: number,
+  moverStones: number, oppStones: number,
 ): Outcome {
   if (moverRings === 0 && oppRings === 0) return 'both-lose';
   if (moverRings === 0) return 'mover-loses';
   if (oppRings === 0) return 'mover-wins';
-  if (noCaptureStreak >= NO_CAPTURE_DRAW_LIMIT) return 'draw';
+  if (quietMoves >= QUIET_MOVE_LIMIT) {
+    if (moverStones > oppStones) return 'mover-wins-on-stones';
+    if (moverStones < oppStones) return 'mover-loses-on-stones';
+    return 'draw';
+  }
   return 'ongoing';
 }
 

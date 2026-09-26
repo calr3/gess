@@ -22,7 +22,8 @@ export interface AiRequest {
   player: Player;
   timeBudgetMs: number;
   engine?: AiEngine;
-  /** Consecutive captureless turns so far (the neural search needs it to see draws). */
+  /** Consecutive moves without a capture so far: the searches need it to see the
+   *  game being decided on stones at QUIET_MOVE_LIMIT. */
   noCaptureStreak?: number;
 }
 
@@ -41,7 +42,7 @@ addEventListener('message', async (event: MessageEvent<AiRequest>) => {
       engine === 'random' ? randomMove(board, player, noCaptureStreak)
         : engine === 'neural' ? await neuralBestMove(board, player)
         : engine === 'neural-mcts' ? await searchBestMove(board, player, noCaptureStreak, timeBudgetMs)
-        : await getBestMove(board, player, timeBudgetMs),
+        : await getBestMove(board, player, timeBudgetMs, noCaptureStreak),
     );
   } catch (err) {
     // Don't leave the UI hanging on "thinking…" — log and reply null.

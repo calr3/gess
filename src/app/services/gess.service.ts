@@ -211,7 +211,7 @@ export class GessService implements OnDestroy {
       // No worker: run the same WASM engine directly on the calling thread. It
       // blocks the UI for the search, but keeps the game playable where Web
       // Workers are unavailable (e.g. SSR or constrained test environments).
-      return wasmGetBestMove(board, player, timeBudgetMs).then(r => {
+      return wasmGetBestMove(board, player, timeBudgetMs, noCaptureStreak).then(r => {
         if (r) this.lastSearchDepth = r.depth;
         return r;
       });
@@ -320,9 +320,9 @@ export class GessService implements OnDestroy {
    * commitMove and revertToMove stay consistent. A player can win or lose on
    * their own turn: lose your last ring → you lose; both lose their last ring on
    * one move → the mover loses; opponent loses their last ring → you win.
-   * Failing all of those, NO_CAPTURE_DRAW_LIMIT consecutive captureless turns
-   * end the game in a draw — but a win/loss on that very turn takes precedence
-   * (resolveOutcome checks rings before the streak).
+   * Failing all of those, QUIET_MOVE_LIMIT consecutive captureless moves end
+   * the game, decided on stones (a tie is a draw) — but a result on rings on that
+   * very move takes precedence (resolveOutcome checks rings before the count).
    */
   private stateAfterMove(board: Board, mover: Player, moves: MoveRecord[]): GameState {
     const opp: Player = mover === 'black' ? 'white' : 'black';
@@ -336,7 +336,11 @@ export class GessService implements OnDestroy {
     // trailing run of captureless moves.
     const noCaptureStreak = this.trailingNoCaptureStreak(moves);
 
-    const outcome = Engine.resolveOutcome(moverRings, oppRings, noCaptureStreak);
+    const moverStones = Engine.countStones(board, mover);
+    const oppStones = Engine.countStones(board, opp);
+    const quiet = `after ${Engine.QUIET_MOVE_LIMIT} moves without a capture`;
+
+    const outcome = Engine.resolveOutcome(moverRings, oppRings, noCaptureStreak, moverStones, oppStones);
     let winner: GameResult | null = null;
     let message: string;
     switch (outcome) {
@@ -352,9 +356,17 @@ export class GessService implements OnDestroy {
         winner = mover;
         message = `${cap(mover)} wins! All of ${cap(opp)}'s rings are gone.`;
         break;
+      case 'mover-wins-on-stones':
+        winner = mover;
+        message = `${cap(mover)} wins on stones, ${moverStones}–${oppStones}, ${quiet}.`;
+        break;
+      case 'mover-loses-on-stones':
+        winner = opp;
+        message = `${cap(opp)} wins on stones, ${oppStones}–${moverStones}, ${quiet}.`;
+        break;
       case 'draw':
         winner = 'draw';
-        message = `Draw — ${Engine.NO_CAPTURE_DRAW_LIMIT} turns passed without a capture.`;
+        message = `Draw — level on stones, ${moverStones}–${oppStones}, ${quiet}.`;
         break;
       default:
         message = `${cap(opp)}'s turn — click a piece to select it`;

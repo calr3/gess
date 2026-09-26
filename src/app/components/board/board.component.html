@@ -13,9 +13,9 @@
 
     <div class="game-message">
       <span>{{ state.message }}</span>
-      @if (turnsToDraw !== null && turnsToDraw <= 5) {
+      @if (movesToStoneCount !== null && movesToStoneCount <= 5) {
         <div class="draw-warning">
-          {{ turnsToDraw }} turn{{ turnsToDraw !== 1 ? 's' : '' }} to a draw without a capture
+          {{ movesToStoneCount }} move{{ movesToStoneCount !== 1 ? 's' : '' }} without a capture until the game is decided on stones
         </div>
       }
       @if (aiThinking) {
@@ -270,14 +270,14 @@
   <details class="rules-summary">
     <summary>How to play</summary>
     <ul>
-      <li>Select any 3×3 area that contains <em>only your stones</em> (at least one).</li>
+      <li>Select any 3×3 area that contains <em>only your stones</em>, with at least one of them around its centre.</li>
       <li>The 8 surrounding cells indicate available movement directions; a <strong>centre stone</strong> gives unlimited range (otherwise max 3 squares).</li>
       <li>Enemy stones in the path are captured; your own stones outside the piece block it.</li>
       <li>Stones landing on the outermost row/column are removed.</li>
       <li>A <strong>ring</strong> is a 3×3 block — 8 of your stones around an empty centre (highlighted, with a <strong>♚</strong> marking the centre). You can have <em>several at once</em>.</li>
       <li><strong>Win:</strong> leave your opponent with <em>no rings left</em>.</li>
       <li>You lose only when you have <em>no rings at all</em> — so destroying one of your own rings (or letting it be captured) is fine, as long as you still have another.</li>
-      <li><strong>Draw:</strong> if {{ drawLimit }} turns pass with no capture (by either side, including your own stones), the game is a draw. Any capture resets the count.</li>
+      <li><strong>No captures:</strong> if {{ quietMoveLimit }} moves pass with no capture (by either side, including your own stones), the game ends and whoever has <em>more stones</em> on the board wins; equal stones is a draw. Any capture resets the count.</li>
     </ul>
   </details>
 

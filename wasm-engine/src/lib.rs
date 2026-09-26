@@ -17,7 +17,7 @@
 // (uniform [0,1), for tie-breaking) — matching Date.now() / Math.random().
 // ─────────────────────────────────────────────────────────────────────────────
 
-use core::sync::atomic::{AtomicU64, AtomicU32, AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU32, AtomicI32, AtomicBool, Ordering};
 
 #[link(wasm_import_module = "env")]
 extern "C" {
@@ -61,6 +61,55 @@ const PLAY_MASK: u32 = 0x7FFFE; // columns 1..18
 // Stand-in for ±Infinity. All real scores are within ±WIN_SCORE (1e6), far
 // inside 2e9, so comparisons and negation behave exactly like the JS doubles.
 const NEG_INF: i32 = -2_000_000_000;
+
+// Quiet-move rule (pgx gess v1, as in gess-engine.ts): after this many
+// consecutive moves without a capture — any stone leaving the board — the game
+// ends and is decided on stones on the playing area; only an exact tie draws.
+const QUIET_LIMIT: i32 = 20;
+
+// Move outcomes, from the mover's point of view. DRAW is a finished game (level
+// on stones at the quiet limit); CONTINUE is not. The values are the order moves
+// are tried in (move_before compares them directly — a lookup there, in the sort
+// every node runs, cost ~10% of search speed): wins, then draws (cheap, exact),
+// then moves that play on, then losses.
+const OUT_WIN: i32 = 2;
+const OUT_DRAW: i32 = 1;
+const OUT_CONTINUE: i32 = 0;
+const OUT_LOSS: i32 = -1;
+
+// The captureless-move count of the position being searched (the game's
+// noCaptureStreak). Set by the main worker before a search, like the board; every
+// engine (main or helper) starts from it.
+static ROOT_QUIET: AtomicI32 = AtomicI32::new(0);
+
+/// Set the root position's count of consecutive moves without a capture.
+#[no_mangle]
+pub extern "C" fn set_quiet_moves(n: i32) {
+    ROOT_QUIET.store(n.clamp(0, QUIET_LIMIT), Ordering::Release);
+}
+
+/// The score of a finished game `ply` plies below the root, or None if play goes on.
+#[inline]
+fn terminal_score(outcome: i32, ply: i32) -> Option<i32> {
+    match outcome {
+        OUT_WIN => Some(WIN_SCORE - (ply + 1)),
+        OUT_LOSS => Some(-(WIN_SCORE - (ply + 1))),
+        OUT_DRAW => Some(0),
+        _ => None,
+    }
+}
+
+#[inline]
+fn is_terminal(outcome: i32) -> bool {
+    outcome != OUT_CONTINUE
+}
+
+/// The result at the quiet limit, from the mover's point of view, given each
+/// side's stones on the playing area.
+#[inline]
+fn stone_outcome(mine: i32, theirs: i32) -> i32 {
+    if mine > theirs { OUT_WIN } else if mine < theirs { OUT_LOSS } else { OUT_DRAW }
+}
 
 // [dr, dc] for each of the 8 footprint positions relative to center. This order,
 // with the stable sort below, pins down the move order (and so the tie-breaks).
@@ -326,6 +375,9 @@ static STOP: AtomicU32 = AtomicU32::new(0);
 static mut ZOB_W: [u64; 400] = [0; 400];
 static mut ZOB_B: [u64; 400] = [0; 400];
 static mut ZOB_SIDE: u64 = 0;
+// One key per quiet-move count (0..=QUIET_LIMIT): a position's value depends on
+// how many captureless moves remain before it is decided on stones.
+static mut ZOB_QUIET: [u64; (QUIET_LIMIT + 1) as usize] = [0; (QUIET_LIMIT + 1) as usize];
 static ZINIT: AtomicBool = AtomicBool::new(false);
 
 #[inline]
@@ -353,6 +405,8 @@ fn ensure_zobrist() {
         let zb = core::ptr::addr_of_mut!(ZOB_B) as *mut u64;
         for i in 0..400 { *zb.add(i) = splitmix64(&mut s); }
         ZOB_SIDE = splitmix64(&mut s);
+        let zq = core::ptr::addr_of_mut!(ZOB_QUIET) as *mut u64;
+        for i in 0..=QUIET_LIMIT as usize { *zq.add(i) = splitmix64(&mut s); }
     }
     ZINIT.store(true, Ordering::Release);
 }
@@ -381,6 +435,10 @@ fn zob_cell(white: bool, idx: usize) -> u64 {
 }
 #[inline]
 fn zob_side() -> u64 { unsafe { ZOB_SIDE } }
+#[inline]
+fn zob_quiet(quiet: i32) -> u64 {
+    unsafe { *(core::ptr::addr_of!(ZOB_QUIET) as *const u64).add(quiet.clamp(0, QUIET_LIMIT) as usize) }
+}
 
 // Counts nodes where the incrementally-maintained hash disagreed with a fresh
 // compute_hash — must stay 0. Only touched when an engine has hash_check set
@@ -444,13 +502,14 @@ fn tt_store(key: u64, depth: i32, val: i32, flag: u8, mv: u32) {
 #[derive(Clone, Copy, PartialEq)]
 struct Move {
     from_r: i32, from_c: i32, to_r: i32, to_c: i32,
-    outcome: i32, // 1 = mover wins, -1 = mover loses own last ring, 0 = continue
+    outcome: i32, // OUT_WIN / OUT_LOSS / OUT_DRAW (game over) or OUT_CONTINUE
     key: i32,     // static eval from the mover's perspective
 }
 
 #[derive(Clone, Copy)]
 struct UndoFrame {
     r: [usize; 6], w: [u32; 6], b: [u32; 6], n: usize,
+    quiet: i32, // the quiet-move count before the move
 }
 
 // Sized for the deepest make/unmake nesting the search needs: negamax stays within
@@ -476,7 +535,7 @@ fn arena_ptr(tid: usize) -> *mut Move {
     unsafe { (core::ptr::addr_of_mut!(MOVE_ARENA) as *mut Move).add(tid * ARENA_MOVES) }
 }
 
-// Move ordering: higher outcome first, then higher key first (both descending).
+// Move ordering: higher outcome first (see OUT_*), then higher key first.
 #[inline]
 fn move_before(a: &Move, b: &Move) -> bool {
     a.outcome > b.outcome || (a.outcome == b.outcome && a.key > b.key)
@@ -570,6 +629,7 @@ struct Engine {
     p_stone_b: [i32; 20],
     undo: [UndoFrame; UNDO_CAP],
     undo_len: usize,
+    quiet: i32,        // consecutive captureless moves up to this position (kept by make/unmake)
     tid: usize,        // thread id → which MOVE_ARENA slice this engine uses
     arena_top: usize,  // bump pointer into MOVE_ARENA[tid]
     hash: u64,         // incremental Zobrist of stones only (side added at probe)
@@ -602,8 +662,9 @@ impl Engine {
             wit_w: -1, wit_b: -1, // lazily found on first has_ring_wit call
             p_ring_w: [0; 20], p_ring_b: [0; 20],
             p_stone_w: [0; 20], p_stone_b: [0; 20],
-            undo: [UndoFrame { r: [0; 6], w: [0; 6], b: [0; 6], n: 0 }; UNDO_CAP],
+            undo: [UndoFrame { r: [0; 6], w: [0; 6], b: [0; 6], n: 0, quiet: 0 }; UNDO_CAP],
             undo_len: 0,
+            quiet: ROOT_QUIET.load(Ordering::Acquire),
             tid,
             arena_top: 0,
             // Stone-only Zobrist of the root board; the search keeps it current
@@ -712,7 +773,7 @@ impl Engine {
     fn make_move(&mut self, from_r: i32, from_c: i32, to_r: i32, to_c: i32, white: bool, track: bool) -> u64 {
         let mut delta = 0u64;
         // Save the rows this move can change (origin & destination footprint rows).
-        let mut frame = UndoFrame { r: [0; 6], w: [0; 6], b: [0; 6], n: 0 };
+        let mut frame = UndoFrame { r: [0; 6], w: [0; 6], b: [0; 6], n: 0, quiet: self.quiet };
         let mut n = 0usize;
         let mut r = from_r - 1;
         while r <= from_r + 1 {
@@ -770,11 +831,15 @@ impl Engine {
         // Clear the destination footprint (captures, both colours). Read occupancy
         // first (after the origin clear, so overlapping origin stones aren't
         // double-counted) to XOR the removed stones out of the hash.
+        // `captured`: did any stone leave the board (displaced here, or carried off
+        // the edge below)? That resets the quiet-move count.
+        let mut captured = false;
         let dcm = COL3[to_c as usize];
         let mut r = to_r - 1;
         while r <= to_r + 1 {
             if r >= 0 && r < SIZE {
                 let ri = r as usize;
+                if (self.w[ri] | self.b[ri]) & dcm != 0 { captured = true; }
                 if track {
                     let mut m = self.w[ri] & dcm;
                     while m != 0 { let c = m.trailing_zeros() as usize; delta ^= zob_cell(true, ri * 20 + c); m &= m - 1; }
@@ -800,19 +865,35 @@ impl Engine {
                         else { self.b[rr as usize] |= 1u32 << cc; }
                         // Piece stone placed at the destination (off-board cells fall away).
                         if track { delta ^= zob_cell(white, (rr * SIZE + cc) as usize); }
+                    } else {
+                        captured = true; // carried off the playing area
                     }
                 }
                 ddc += 1;
             }
             ddr += 1;
         }
+        self.quiet = if captured { 0 } else { self.quiet + 1 };
         // Witness has_ring needs no make/unmake maintenance (it self-validates).
         delta
+    }
+
+    /// Stones on the playing area: (white, black).
+    fn stone_counts(&self) -> (i32, i32) {
+        let (mut ws, mut bs) = (0, 0);
+        let mut r = MIN;
+        while r <= MAX {
+            ws += (self.w[r as usize] & PLAY_MASK).count_ones() as i32;
+            bs += (self.b[r as usize] & PLAY_MASK).count_ones() as i32;
+            r += 1;
+        }
+        (ws, bs)
     }
 
     fn unmake_move(&mut self) {
         self.undo_len -= 1;
         let frame = self.undo[self.undo_len];
+        self.quiet = frame.quiet;
         for i in 0..frame.n {
             let ri = frame.r[i];
             self.w[ri] = frame.w[i];
@@ -966,12 +1047,16 @@ impl Engine {
                             let cwdeep = white_deepest(&self.w);
                             let cbdeep = black_deepest(&self.b);
                             let safety = ring_safety(&self.w, &self.b, white); // on the child board
+                            let at_limit = self.quiet >= QUIET_LIMIT;
                             self.unmake_move();
 
                             let (myr, opr) = if white { (cwr, cbr) } else { (cbr, cwr) };
                             let (mys, ops) = if white { (cws, cbs) } else { (cbs, cws) };
                             let (myd, opd) = if white { (cwdeep, cbdeep) } else { (cbdeep, cwdeep) };
-                            let outcome = if myr == 0 { -1 } else if opr == 0 { 1 } else { 0 };
+                            let outcome = if myr == 0 { OUT_LOSS }
+                                else if opr == 0 { OUT_WIN }
+                                else if at_limit { stone_outcome(mys, ops) }
+                                else { OUT_CONTINUE };
                             let key = 100 * (mys - ops) + 70 * (myr - opr) + (myd - opd) + safety;
                             unsafe { *base.add(start + count) = Move { from_r: r, from_c: c, to_r: nr, to_c: nc, outcome, key }; }
                             count += 1;
@@ -1023,8 +1108,8 @@ impl Engine {
         let mut tt_move = 0u32;
         if self.tt_enabled {
             // Incremental hash + side-to-move term (kept current on search edges).
-            key = self.hash ^ if white { zob_side() } else { 0 };
-            if self.hash_check && key != compute_hash(&self.w, &self.b, white) {
+            key = self.hash ^ (if white { zob_side() } else { 0 }) ^ zob_quiet(self.quiet);
+            if self.hash_check && key != compute_hash(&self.w, &self.b, white) ^ zob_quiet(self.quiet) {
                 HASH_MISMATCH.fetch_add(1, Ordering::Relaxed);
             }
             if let Some(h) = tt_probe(key) {
@@ -1063,10 +1148,8 @@ impl Engine {
         for i in 0..mcount {
             let mv = unsafe { *base.add(mstart + i) }; // copy out before recursing
             let score;
-            if mv.outcome == 1 {
-                score = WIN_SCORE - (ply + 1);
-            } else if mv.outcome == -1 {
-                score = -(WIN_SCORE - (ply + 1));
+            if let Some(t) = terminal_score(mv.outcome, ply) {
+                score = t;
             } else if depth == 1 {
                 score = mv.key;
             } else {
@@ -1110,8 +1193,8 @@ impl Engine {
             }
         }
 
-        let key = self.hash ^ if white { zob_side() } else { 0 };
-        if self.hash_check && key != compute_hash(&self.w, &self.b, white) {
+        let key = self.hash ^ (if white { zob_side() } else { 0 }) ^ zob_quiet(self.quiet);
+        if self.hash_check && key != compute_hash(&self.w, &self.b, white) ^ zob_quiet(self.quiet) {
             HASH_MISMATCH.fetch_add(1, Ordering::Relaxed);
         }
         if self.ring_check { self.verify_rings(); }
@@ -1180,6 +1263,10 @@ impl Engine {
                 score = -(WIN_SCORE - (ply + 1));
             } else if !op_has {
                 score = WIN_SCORE - (ply + 1);
+            } else if self.quiet >= QUIET_LIMIT {
+                let (ws, bs) = self.stone_counts();
+                let (mine, theirs) = if white { (ws, bs) } else { (bs, ws) };
+                score = terminal_score(stone_outcome(mine, theirs), ply).unwrap();
             } else if depth == 1 {
                 score = self.eval_leaf(white, inc);
             } else {
@@ -1296,7 +1383,8 @@ pub extern "C" fn analyze() -> i32 {
 }
 
 /// Verification: generated root moves (sorted) → OUT[0] = count, then 6 i32 per
-/// move: fromR, fromC, toR, toC, outcome, key. Returns the count.
+/// move: fromR, fromC, toR, toC, outcome (OUT_*: 2 win, 1 draw, 0 play on,
+/// -1 loss), key. Returns the count.
 #[no_mangle]
 pub extern "C" fn gen_root(white_i: i32) -> i32 {
     let (w, b) = read_board();
@@ -1334,10 +1422,8 @@ pub extern "C" fn search_root(white_i: i32, depth: i32, tt_enabled_i: i32) -> i3
     let mut scored: Vec<(Move, i32)> = Vec::with_capacity(root.len());
     for ch in &root {
         let score;
-        if ch.outcome == 1 {
-            score = WIN_SCORE - 1;
-        } else if ch.outcome == -1 {
-            score = -(WIN_SCORE - 1);
+        if let Some(t) = terminal_score(ch.outcome, 0) {
+            score = t;
         } else if depth == 1 {
             score = ch.key;
         } else {
@@ -1458,10 +1544,8 @@ pub extern "C" fn best_move(
         for ch in &root {
             let score;
             let exact;
-            if ch.outcome == 1 {
-                score = WIN_SCORE - 1; exact = true;
-            } else if ch.outcome == -1 {
-                score = -(WIN_SCORE - 1); exact = true;
+            if let Some(t) = terminal_score(ch.outcome, 0) {
+                score = t; exact = true;
             } else if depth == 1 {
                 score = ch.key; exact = true;
             } else {
@@ -1642,10 +1726,8 @@ pub extern "C" fn search_to_depth(white_i: i32, max_depth: i32, tt_enabled_i: i3
         let mut alpha = NEG_INF;
         for ch in &root {
             let score;
-            if ch.outcome == 1 {
-                score = WIN_SCORE - 1;
-            } else if ch.outcome == -1 {
-                score = -(WIN_SCORE - 1);
+            if let Some(t) = terminal_score(ch.outcome, 0) {
+                score = t;
             } else if depth == 1 {
                 score = ch.key;
             } else {
@@ -1706,8 +1788,7 @@ pub extern "C" fn search_fixed_shared(white_i: i32, max_depth: i32, tid: i32) ->
         let mut alpha = NEG_INF;
         for ch in &root {
             let score;
-            if ch.outcome == 1 { score = WIN_SCORE - 1; }
-            else if ch.outcome == -1 { score = -(WIN_SCORE - 1); }
+            if let Some(t) = terminal_score(ch.outcome, 0) { score = t; }
             else if depth == 1 { score = ch.key; }
             else {
                 let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
@@ -1755,7 +1836,7 @@ pub extern "C" fn search_helper(white_i: i32, time_budget_ms: f64, tid: i32) -> 
         for j in 0..rcount {
             if unsafe { now() } >= deadline || STOP.load(Ordering::Relaxed) != 0 { return 0; }
             let ch = unsafe { *base.add(rstart + (j + rot) % rcount) };
-            if ch.outcome == 1 || ch.outcome == -1 { continue; } // terminal: nothing to deepen
+            if is_terminal(ch.outcome) { continue; } // game over: nothing to deepen
             if depth > 1 {
                 let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
                 eng.hash ^= d;
@@ -1790,7 +1871,7 @@ pub extern "C" fn hash_check_run(white_i: i32, max_depth: i32) -> i32 {
     while depth <= max_depth {
         let mut alpha = NEG_INF;
         for ch in &root {
-            if ch.outcome == 1 || ch.outcome == -1 { continue; }
+            if is_terminal(ch.outcome) { continue; }
             if depth == 1 { if ch.key > alpha { alpha = ch.key; } continue; }
             let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
             eng.hash ^= d;
@@ -1829,7 +1910,7 @@ pub extern "C" fn ring_check_run(white_i: i32, max_depth: i32) -> i32 {
     while depth <= max_depth {
         let mut alpha = NEG_INF;
         for ch in &root {
-            if ch.outcome == 1 || ch.outcome == -1 { continue; }
+            if is_terminal(ch.outcome) { continue; }
             if depth == 1 { if ch.key > alpha { alpha = ch.key; } continue; }
             let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
             eng.hash ^= d;
@@ -1867,7 +1948,7 @@ pub extern "C" fn bench_timed(white_i: i32, budget_ms: f64) -> i32 {
         let mut alpha = NEG_INF;
         let mut aborted = false;
         for ch in &root {
-            if ch.outcome == 1 || ch.outcome == -1 { continue; }
+            if is_terminal(ch.outcome) { continue; }
             if depth == 1 { if ch.key > alpha { alpha = ch.key; } continue; }
             let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
             eng.hash ^= d;
@@ -1903,7 +1984,7 @@ pub extern "C" fn bench_fixed(white_i: i32, max_depth: i32) -> i32 {
     while depth <= max_depth {
         let mut alpha = NEG_INF;
         for ch in &root {
-            if ch.outcome == 1 || ch.outcome == -1 { continue; }
+            if is_terminal(ch.outcome) { continue; }
             if depth == 1 { if ch.key > alpha { alpha = ch.key; } continue; }
             let d = eng.make_move(ch.from_r, ch.from_c, ch.to_r, ch.to_c, white, true);
             eng.hash ^= d;

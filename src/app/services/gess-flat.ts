@@ -4,11 +4,12 @@
 // The same rules as gess-engine, but on an Int8Array of 400 cells (index =
 // row * 20 + col; 0 empty, 1 black, 2 white) and without the string-keyed sets,
 // so the search can generate moves and store thousands of positions cheaply.
-// verify/flat-rules-parity.ts checks it against gess-engine on random games.
+// verify/flat-rules-parity.ts checks it against gess-engine on random games,
+// and verify/pgx-conformance.ts against pgx (the training environment).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Board, Player } from '../models/game.model';
-import { MAX, MIN, NO_CAPTURE_DRAW_LIMIT, SIZE } from './gess-engine';
+import { MAX, MIN, QUIET_MOVE_LIMIT, SIZE } from './gess-engine';
 
 export type FlatBoard = Int8Array;
 export const EMPTY = 0;
@@ -61,7 +62,7 @@ export function isFootprintCentre(b: FlatBoard, row: number, col: number, me: nu
       if (c < 0 || c >= SIZE) continue;
       const v = b[r * SIZE + c];
       if (v === opp) return false;
-      if (v === me) hasOwn = true;
+      if (v === me && (dr !== 0 || dc !== 0)) hasOwn = true;
     }
   }
   return hasOwn;
@@ -157,17 +158,17 @@ export function hasRing(b: FlatBoard, me: number): boolean {
   return false;
 }
 
-export function stoneCount(b: FlatBoard): number {
+export function stoneCount(b: FlatBoard, stone?: number): number {
   let n = 0;
-  for (let i = 0; i < CELLS; i++) if (b[i] !== EMPTY) n++;
+  for (let i = 0; i < CELLS; i++) if (stone === undefined ? b[i] !== EMPTY : b[i] === stone) n++;
   return n;
 }
 
 /**
  * The result of `mover` having just produced `after` from `before` with the
- * captureless-turn streak `streak` beforehand, as gess-engine's resolveOutcome
- * decides it: 1 mover wins, -1 mover loses, 0 draw, null if play goes on.
- * Also returns the new streak.
+ * quiet-move count `streak` beforehand, as gess-engine's resolveOutcome decides
+ * it: 1 mover wins, -1 mover loses, 0 draw, null if play goes on. At the quiet-
+ * move limit the game is decided on stones. Also returns the new count.
  */
 export function outcomeAfterMove(
   before: FlatBoard, after: FlatBoard, mover: number, streak: number,
@@ -177,6 +178,9 @@ export function outcomeAfterMove(
   const oppRing = hasRing(after, 3 - mover);
   if (!moverRing) return { result: -1, streak: newStreak }; // includes both losing their rings
   if (!oppRing) return { result: 1, streak: newStreak };
-  if (newStreak >= NO_CAPTURE_DRAW_LIMIT) return { result: 0, streak: newStreak };
+  if (newStreak >= QUIET_MOVE_LIMIT) {
+    const lead = stoneCount(after, mover) - stoneCount(after, 3 - mover);
+    return { result: lead > 0 ? 1 : lead < 0 ? -1 : 0, streak: newStreak };
+  }
   return { result: null, streak: newStreak };
 }

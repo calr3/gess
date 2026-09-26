@@ -224,8 +224,8 @@ const mcts = new Mcts(evaluateBatch);
 
 /**
  * Choose a move by searching with the network for `budgetMs` (not counting the
- * one-off model load). `noCaptureStreak` is the game's captureless-turn count,
- * which decides when the search sees a draw coming.
+ * one-off model load). `noCaptureStreak` is the game's count of moves without a capture,
+ * which tells the search when the game will be decided on stones.
  */
 export async function searchBestMove(
   board: Board, player: Player, noCaptureStreak: number, budgetMs: number,

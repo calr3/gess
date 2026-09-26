@@ -30,6 +30,10 @@ interface WasmExports {
   best_move(white: number, timeBudgetMs: number, ttEnabled: number, tid: number, bumpGen: number): number;
   begin_search(): void;
   stop_search(): void;
+  // The position's count of consecutive moves without a capture (the search sees
+  // the game decided on stones when it reaches QUIET_MOVE_LIMIT). Set before
+  // begin_search(), like the board; helpers read it too.
+  set_quiet_moves(n: number): void;
 }
 
 // Use the transposition table in production. Flip to 0 to disable it cheaply
@@ -178,17 +182,19 @@ function toFlat(board: Board): Uint8Array {
 
 /**
  * Chooses a move via the WASM negamax search (parallel Lazy SMP + shared TT).
+ * `quietMoves` is the game's count of consecutive moves without a capture.
  * Returns the chosen move and the deepest completed depth, or null if there are
  * no legal moves.
  */
 export async function getBestMove(
-  board: Board, player: Player, timeBudgetMs: number,
+  board: Board, player: Player, timeBudgetMs: number, quietMoves = 0,
 ): Promise<AiMove | null> {
   const { ex, memory, helpers } = await loadEngine();
   const white = player === 'white' ? 1 : 0;
 
   // Write the board (re-acquire the view: a previous call may have grown memory).
   new Uint8Array(memory.buffer, ex.board_ptr(), SIZE * SIZE).set(toFlat(board));
+  ex.set_quiet_moves(quietMoves);
 
   let found: number;
   if (helpers.length > 0) {

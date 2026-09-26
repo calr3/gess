@@ -2,6 +2,32 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.13.
 
+## Rules
+
+The rules are those of the training environment, pgx's `gess` env **v1**
+(`pgx/_src/games/gess.py`); tdgauntlet's Gess follows the same version. In
+particular, after 20 consecutive moves without a capture (any stone leaving the
+board, your own included) the game is decided on stones on the board: more stones
+wins, and only an exact tie is a draw.
+
+The app has three implementations of the rules — the game (`gess-engine.ts`), the
+neural search's (`gess-flat.ts`) and the negamax engine (`wasm-engine/src/lib.rs`)
+— and `verify/pgx-conformance.ts` checks all three against positions dumped from
+pgx: every legal move, and each move's resulting position and result. The
+fixtures are tdgauntlet's `conformance/gess.jsonl.gz` (copied to
+`verify/pgx-gess.jsonl.gz`) and `verify/pgx-gess-quiet.jsonl.gz` from
+`verify/dump_pgx_quiet.py` (games that reach the 20-move limit with unequal
+stones, which tdgauntlet's has none of). Regenerate both if pgx's rules change:
+
+```bash
+node_modules/.bin/esbuild verify/pgx-conformance.ts --bundle --platform=node --format=esm \
+  --outfile=node_modules/.cache/pgx-conformance.mjs && ~/node22/bin/node node_modules/.cache/pgx-conformance.mjs
+```
+
+It needs the negamax engine built (`wasm-engine/build.sh`, nightly Rust with
+`rust-src`). `verify/quiet-rule.mjs` has unit checks of the 20-move rule, and
+`verify/quiet-rule-browser.py` plays it out in the UI.
+
 ## Neural engine
 
 Alongside the Rust/WASM negamax search, the app can play with the AlphaZero-style
@@ -23,6 +49,13 @@ has a hardware GPU and WebAssembly otherwise (the runtime files are copied from
 page opens; on WebGPU the worker then times a few batch sizes and uses the
 smallest one close to the best throughput. The browser console logs the choice
 and, after each search, its evaluations per second.
+
+The deployed model is pgx's `checkpoints/gess_20260915200817/000100.ckpt` (E10,
+iteration 100 in pgx's `GESS_EXPERIMENTS.md`), identified by matching its outputs
+on `verify/nn-reference.json`. It was trained before pgx's v1 rules, under the old
+rule that 20 captureless moves are a draw. Its input doesn't include the
+captureless-move count, so the search's scoring of finished games is what applies
+the v1 rule.
 
 The model file is not in git. Build it from a training checkpoint with
 `examples/alphazero/export_onnx.py` in the pgx repo and copy the result to

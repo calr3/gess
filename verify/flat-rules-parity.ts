@@ -84,8 +84,9 @@ for (let g = 0; g < GAMES; g++) {
     // Game result, as the app decides it.
     const opp: Player = player === 'white' ? 'black' : 'white';
     const newStreak = Engine.wasCapture(board, next) ? 0 : streak + 1;
-    const outcome = Engine.resolveOutcome(Engine.countRings(next, player), Engine.countRings(next, opp), newStreak);
-    const expected = outcome === 'ongoing' ? null : outcome === 'mover-wins' ? 1 : outcome === 'draw' ? 0 : -1;
+    const outcome = Engine.resolveOutcome(Engine.countRings(next, player), Engine.countRings(next, opp), newStreak,
+      Engine.countStones(next, player), Engine.countStones(next, opp));
+    const expected = Engine.outcomeResult(outcome);
     const got = Flat.outcomeAfterMove(flat, nextFlat, me, streak);
     if (got.result !== expected || got.streak !== newStreak) {
       fail(`outcome: engine ${outcome}/${newStreak}, flat ${got.result}/${got.streak}`);
