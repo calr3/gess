@@ -12,7 +12,7 @@ import { buildObservation, OBS_PLANES, OBS_SIZE } from '../src/app/services/gess
 import type { Board, Cell, Player } from '../src/app/models/game.model.ts';
 
 interface Case {
-  board: string[]; player: Player; stage: number; source: [number, number] | null;
+  board: string[]; player: Player; stage: number; source: [number, number] | null; streak: number;
   obs: number[]; logits: number[]; value: number; legal: number[];
 }
 
@@ -33,7 +33,7 @@ const bestLegal = (scores: ArrayLike<number>, legal: number[]) =>
 let worstLogit = 0, worstValue = 0, agree = 0;
 for (const c of cases) {
   const selected = c.source ? { row: c.source[0], col: c.source[1] } : null;
-  const obs = buildObservation(parseBoard(c.board), c.player, selected);
+  const obs = buildObservation(parseBoard(c.board), c.player, selected, c.streak);
   const out = await session.run({
     [session.inputNames[0]]: new ort.Tensor('float32', obs, [1, OBS_SIZE, OBS_SIZE, OBS_PLANES]),
   });

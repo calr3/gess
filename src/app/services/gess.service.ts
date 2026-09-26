@@ -205,7 +205,7 @@ export class GessService implements OnDestroy {
         // Same fallback as below: run it on the calling thread.
         return import('./gess-nn').then(nn =>
           engine === 'neural'
-            ? nn.getBestMove(board, player)
+            ? nn.getBestMove(board, player, noCaptureStreak)
             : nn.searchBestMove(board, player, noCaptureStreak, timeBudgetMs));
       }
       // No worker: run the same WASM engine directly on the calling thread. It

@@ -71,8 +71,8 @@ for (let g = 0; g < GAMES; g++) {
     const f = { row: Math.floor(from / SIZE), col: from % SIZE };
     const t = { row: Math.floor(to / SIZE), col: to % SIZE };
     for (const [sel, src] of [[null, -1], [f, from]] as const) {
-      const expected = buildObservation(board, player, sel);
-      writeObservation(flat, me, src, obsBuf, OBS_LENGTH); // mid-buffer, over stale data
+      const expected = buildObservation(board, player, sel, streak);
+      writeObservation(flat, me, src, streak, obsBuf, OBS_LENGTH); // mid-buffer, over stale data
       for (let i = 0; i < OBS_LENGTH; i++)
         if (obsBuf[OBS_LENGTH + i] !== expected[i]) fail(`observation (source ${src}) index ${i}`);
     }

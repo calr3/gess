@@ -4,7 +4,7 @@
 //
 //   ~/node22/bin/node --experimental-strip-types verify/nn-obs-parity.ts
 //
-// Regenerate the reference with the snippet in verify/README-nn.md.
+// Regenerate the reference with verify/dump_nn_reference.py.
 
 import { readFileSync } from 'node:fs';
 import { buildObservation, OBS_LENGTH } from '../src/app/services/gess-nn-obs.ts';
@@ -15,6 +15,7 @@ interface Case {
   player: Player;
   stage: number;
   source: [number, number] | null;
+  streak: number;
   obs: number[];
   logits: number[];
   value: number;
@@ -34,17 +35,19 @@ function parseBoard(rows: string[]): Board {
 let worst = 0;
 for (const [i, c] of cases.entries()) {
   const selected = c.source ? { row: c.source[0], col: c.source[1] } : null;
-  const obs = buildObservation(parseBoard(c.board), c.player, selected);
+  const obs = buildObservation(parseBoard(c.board), c.player, selected, c.streak);
   if (obs.length !== OBS_LENGTH || c.obs.length !== OBS_LENGTH) {
     throw new Error(`case ${i}: length ${obs.length} vs ${c.obs.length}`);
   }
   let diff = 0;
-  for (let j = 0; j < OBS_LENGTH; j++) diff = Math.max(diff, Math.abs(obs[j] - c.obs[j]));
+  // pgx's observation is float32; the JSON holds it as decimals (0.05 for the
+  // float32 nearest 0.05), so compare at float32 precision.
+  for (let j = 0; j < OBS_LENGTH; j++) diff = Math.max(diff, Math.abs(obs[j] - Math.fround(c.obs[j])));
   if (diff > 0) {
-    const at = [...c.obs].findIndex((v, j) => Math.abs(v - obs[j]) > 0);
+    const at = [...c.obs].findIndex((v, j) => Math.abs(Math.fround(v) - obs[j]) > 0);
     throw new Error(
       `case ${i} (${c.player}, stage ${c.stage}): first mismatch at index ${at}, ` +
-        `plane ${at % 4}, expected ${c.obs[at]}, got ${obs[at]}`,
+        `plane ${at % 6}, expected ${c.obs[at]}, got ${obs[at]}`,
     );
   }
   worst = Math.max(worst, diff);

@@ -40,7 +40,7 @@ addEventListener('message', async (event: MessageEvent<AiRequest>) => {
   try {
     reply(
       engine === 'random' ? randomMove(board, player, noCaptureStreak)
-        : engine === 'neural' ? await neuralBestMove(board, player)
+        : engine === 'neural' ? await neuralBestMove(board, player, noCaptureStreak)
         : engine === 'neural-mcts' ? await searchBestMove(board, player, noCaptureStreak, timeBudgetMs)
         : await getBestMove(board, player, timeBudgetMs, noCaptureStreak),
     );

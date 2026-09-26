@@ -260,7 +260,7 @@ export class Mcts {
 
     const submit = (leaves: Leaf[]) => {
       const buf = buffers[round++ % 2];
-      leaves.forEach((l, i) => writeObservation(l.node.board, l.node.me, l.node.source, buf, i * OBS_LENGTH));
+      leaves.forEach((l, i) => writeObservation(l.node.board, l.node.me, l.node.source, l.node.streak, buf, i * OBS_LENGTH));
       evaluations += leaves.length;
       return this.evaluate(buf, batch);
     };
@@ -301,7 +301,7 @@ export class Mcts {
       // Too little time to look at it: one evaluation for the destinations.
       const actions = legalActions(fromNode);
       const buf = buffers[0];
-      writeObservation(fromNode.board, fromNode.me, fromNode.source, buf, 0);
+      writeObservation(fromNode.board, fromNode.me, fromNode.source, fromNode.streak, buf, 0);
       absorb([{ path: [], edges: [], node: fromNode, actions }], await this.evaluate(buf, batch));
       evaluations++;
     }

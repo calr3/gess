@@ -5,14 +5,17 @@
 piece (if any), the observation tensor the trained network was fed, its output
 scores and value, and the legal actions.
 
-Regenerate it after retraining, from the pgx repo, with the checkpoint you
-exported to ONNX (see `examples/alphazero/export_onnx.py` there):
+Regenerate it after retraining, in the pgx repo's Python environment, with the
+checkpoint you exported to ONNX (see `examples/alphazero/export_onnx.py` there):
 
-```python
-# examples/alphazero, with the checkpoint's config and params loaded as `cfg`/`params`
-# writes board rows, player, stage, source, obs, logits, value and legal actions
-# for a handful of positions sampled from a random game.
+```bash
+JAX_PLATFORMS=cpu python verify/dump_nn_reference.py ~/calr3gh/pgx/checkpoints/<run>/<step>.ckpt
 ```
+
+It plays a seeded game in pgx with moves sampled from the network, and keeps one
+position per combination of stage, clock band and who is ahead on stones, so
+every observation plane is exercised. Each position also records `streak`, the
+count of moves without a capture, which the encoder needs.
 
 Checks (run with Node 22; `~/node22/bin/node` on this machine):
 

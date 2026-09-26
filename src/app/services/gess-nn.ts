@@ -139,14 +139,15 @@ export interface NeuralEvaluation {
   value: number;
 }
 
-/** Run the network on one position. */
+/** Run the network on one position; `streak` is the moves without a capture so far. */
 export async function evaluate(
   board: Board,
   player: Player,
   selectedCenter: Position | null,
+  streak: number,
 ): Promise<NeuralEvaluation> {
   const s = await session();
-  const obs = buildObservation(board, player, selectedCenter);
+  const obs = buildObservation(board, player, selectedCenter, streak);
   const input = new ort.Tensor('float32', obs, [1, OBS_SIZE, OBS_SIZE, OBS_PLANES]);
   const outputs = await s.run({ [s.inputNames[0]]: input });
   const tensors = s.outputNames.map(name => outputs[name]);
@@ -177,7 +178,7 @@ function bestSquare(logits: Float32Array, legal: Position[]): Position {
  * Returns the same shape as the WASM engine's `getBestMove` so the two are
  * interchangeable; `depth` is 0 because nothing is searched.
  */
-export async function getBestMove(board: Board, player: Player): Promise<AiMove | null> {
+export async function getBestMove(board: Board, player: Player, streak: number): Promise<AiMove | null> {
   const sources: Position[] = [];
   for (let row = 0; row < SIZE; row++) {
     for (let col = 0; col < SIZE; col++) {
@@ -189,12 +190,12 @@ export async function getBestMove(board: Board, player: Player): Promise<AiMove 
   }
   if (sources.length === 0) return null;
 
-  const first = await evaluate(board, player, null);
+  const first = await evaluate(board, player, null, streak);
   const from = bestSquare(first.logits, sources);
 
   const destinations = getValidMoves(board, from, player);
   if (destinations.length === 0) return null;
-  const second = await evaluate(board, player, from);
+  const second = await evaluate(board, player, from, streak);
   const to = bestSquare(second.logits, destinations);
 
   console.log(

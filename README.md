@@ -50,12 +50,16 @@ page opens; on WebGPU the worker then times a few batch sizes and uses the
 smallest one close to the best throughput. The browser console logs the choice
 and, after each search, its evaluations per second.
 
-The deployed model is pgx's `checkpoints/gess_20260915200817/000100.ckpt` (E10,
-iteration 100 in pgx's `GESS_EXPERIMENTS.md`), identified by matching its outputs
-on `verify/nn-reference.json`. It was trained before pgx's v1 rules, under the old
-rule that 20 captureless moves are a draw. Its input doesn't include the
-captureless-move count, so the search's scoring of finished games is what applies
-the v1 rule.
+The deployed model is pgx's `checkpoints/gess_20260926190427/000024.ckpt` (E14
+in pgx's `GESS_EXPERIMENTS.md`: E13, the full-size run under the v1 rules,
+fine-tuned for 24 iterations with pgx gess v2's observation). v2 adds two planes
+to the network's input: the count of moves without a capture over 20, and the same
+signed by who has more stones. So the network sees how close the 20-move ending
+is and who it favours, and the search passes each position's count to the
+encoder (`gess-nn-obs.ts`). E14 beat E13 by about 180 Elo per game in a 400-game
+tdgauntlet match. It replaced E13, which replaced E10 (a 1.2 h pilot trained
+under the old draw rule). `verify/nn-reference.json` holds its outputs on
+positions from pgx.
 
 The model file is not in git. Build it from a training checkpoint with
 `examples/alphazero/export_onnx.py` in the pgx repo and copy the result to
