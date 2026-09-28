@@ -66,10 +66,11 @@ page opens; on WebGPU the worker then times a few batch sizes and uses the
 smallest one close to the best throughput. The browser console logs the choice
 and, after each search, its evaluations per second.
 
-The deployed model is pgx's `checkpoints/gess_20260926222338/000184.ckpt` (E16
-in pgx's `GESS_EXPERIMENTS.md`): the full-size v1-rules line E13 -> E15 -> E16,
-here after ~16 h more training than E15, which it beat 0.79 per game (+230 Elo)
-over 400 games in tdgauntlet. The encoder builds pgx gess v2's six-plane
+The deployed model is pgx's `checkpoints/gess_20260926222338/000298.ckpt` (E18
+in pgx's `GESS_EXPERIMENTS.md`): the full-size v1-rules line E13 -> E15 -> E16 ->
+E17 -> E18, whose last 4.45 h trained on 64-simulation searches. It beat E17 0.62
+per game (+86 Elo) over 400 games in tdgauntlet; E17 had tied E16, the previous
+deployed model. The encoder builds pgx gess v2's six-plane
 observation, whose last two planes are the quiet clock and the clock signed by
 who has more stones; this line trains with `obs_planes=4`, so the exported
 network ignores them (E14, the same fine-tune reading all six, did no better).
