@@ -28,6 +28,22 @@ It needs the negamax engine built (`wasm-engine/build.sh`, nightly Rust with
 `rust-src`). `verify/quiet-rule.mjs` has unit checks of the 20-move rule, and
 `verify/quiet-rule-browser.py` plays it out in the UI.
 
+## Tutorial
+
+The first visit opens a short tutorial (`src/app/tutorial/`): pieces, moves,
+captures and rings, each on a 7×9 window of the board with only the stones the
+point needs, with the moves played out. The Tutorial button reopens it; the
+browser remembers it has been seen (`localStorage` key `gess.tutorialSeen`).
+What each step shows is computed by the game's rules, and
+`verify/tutorial-check.ts` checks the steps show what their text says:
+
+```bash
+node_modules/.bin/esbuild verify/tutorial-check.ts --bundle --platform=node --format=esm \
+  --outfile=node_modules/.cache/tutorial-check.mjs && ~/node22/bin/node node_modules/.cache/tutorial-check.mjs
+```
+
+The Android app (`../gess-android`) has the same steps.
+
 ## Neural engine
 
 Alongside the Rust/WASM negamax search, the app can play with the AlphaZero-style
@@ -50,16 +66,14 @@ page opens; on WebGPU the worker then times a few batch sizes and uses the
 smallest one close to the best throughput. The browser console logs the choice
 and, after each search, its evaluations per second.
 
-The deployed model is pgx's `checkpoints/gess_20260926190427/000024.ckpt` (E14
-in pgx's `GESS_EXPERIMENTS.md`: E13, the full-size run under the v1 rules,
-fine-tuned for 24 iterations with pgx gess v2's observation). v2 adds two planes
-to the network's input: the count of moves without a capture over 20, and the same
-signed by who has more stones. So the network sees how close the 20-move ending
-is and who it favours, and the search passes each position's count to the
-encoder (`gess-nn-obs.ts`). E14 beat E13 by about 180 Elo per game in a 400-game
-tdgauntlet match. It replaced E13, which replaced E10 (a 1.2 h pilot trained
-under the old draw rule). `verify/nn-reference.json` holds its outputs on
-positions from pgx.
+The deployed model is pgx's `checkpoints/gess_20260926222338/000184.ckpt` (E16
+in pgx's `GESS_EXPERIMENTS.md`): the full-size v1-rules line E13 -> E15 -> E16,
+here after ~16 h more training than E15, which it beat 0.79 per game (+230 Elo)
+over 400 games in tdgauntlet. The encoder builds pgx gess v2's six-plane
+observation, whose last two planes are the quiet clock and the clock signed by
+who has more stones; this line trains with `obs_planes=4`, so the exported
+network ignores them (E14, the same fine-tune reading all six, did no better).
+`verify/nn-reference.json` holds its outputs on positions from pgx.
 
 The model file is not in git. Build it from a training checkpoint with
 `examples/alphazero/export_onnx.py` in the pgx repo and copy the result to
