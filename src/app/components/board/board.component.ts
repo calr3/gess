@@ -7,6 +7,7 @@ import { GessService } from '../../services/gess.service';
 import type { AiEngine } from '../../services/gess-ai.worker';
 import { QUIET_MOVE_LIMIT } from '../../services/gess-engine';
 import { Board, GameState, MoveRecord, Player, Position } from '../../models/game.model';
+import { TutorialComponent } from '../../tutorial/tutorial.component';
 
 interface Arrow { x1: number; y1: number; x2: number; y2: number; }
 
@@ -44,10 +45,17 @@ function engineFor(level: AiLevel): AiEngine {
 
 function isAi(c: Controller): c is AiLevel { return c !== 'human'; }
 
+const TUTORIAL_SEEN_KEY = 'gess.tutorialSeen';
+
+/** Whether this browser has seen the tutorial (true if storage is unavailable, so it doesn't nag). */
+function tutorialSeen(): boolean {
+  try { return localStorage.getItem(TUTORIAL_SEEN_KEY) === '1'; } catch { return true; }
+}
+
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [],
+  imports: [TutorialComponent],
   templateUrl: './board.component.html',
   styleUrl: './board.component.scss',
 })
@@ -111,6 +119,19 @@ export class BoardComponent implements OnInit, OnDestroy, AfterViewChecked {
   typedFromCell: string | null = null;
   typedToCell: string | null = null;
   typedArrow: Arrow | null = null;
+
+  // The tutorial opens by itself on the first visit, and from its button.
+  showTutorial = !tutorialSeen();
+
+  openTutorial(): void {
+    this.showTutorial = true;
+  }
+
+  closeTutorial(): void {
+    this.showTutorial = false;
+    try { localStorage.setItem(TUTORIAL_SEEN_KEY, '1'); } catch { /* storage unavailable */ }
+    this.cdr.markForCheck();
+  }
 
   get displayBoard(): Board { return this.previewBoard ?? this.state.board; }
 

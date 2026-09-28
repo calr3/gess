@@ -1,0 +1,87 @@
+<div class="tutorial-backdrop" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+  <div class="tutorial-card">
+    <div class="tutorial-head">
+      <span class="tutorial-kicker">How to play</span>
+      <span class="tutorial-count">{{ index() + 1 }} / {{ steps.length }}</span>
+    </div>
+    <h2 class="tutorial-title" id="tutorial-title">{{ step().title }}</h2>
+
+    @if (step().rows) {
+      <svg class="mini-board" [attr.viewBox]="'0 0 ' + width + ' ' + height" role="img"
+           [attr.aria-label]="step().title">
+        <defs>
+          <radialGradient id="tut-white" cx="38%" cy="32%" r="70%">
+            <stop offset="0%" stop-color="#ffffff" /><stop offset="100%" stop-color="#c8c8c8" />
+          </radialGradient>
+          <radialGradient id="tut-black" cx="38%" cy="32%" r="70%">
+            <stop offset="0%" stop-color="#666666" /><stop offset="100%" stop-color="#111111" />
+          </radialGradient>
+          <marker id="tut-arrowhead" markerWidth="6" markerHeight="6" refX="4.5" refY="3"
+                  orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#ffca28" />
+          </marker>
+        </defs>
+
+        @for (r of rowsIdx; track r) {
+          @for (c of colsIdx; track c) {
+            <rect [attr.x]="c * cell" [attr.y]="r * cell" [attr.width]="cell" [attr.height]="cell"
+                  [attr.fill]="fill(r, c)" class="sq" />
+          }
+        }
+        @if (pieceCentre; as p) {
+          <rect [attr.x]="p[1] * cell + 2" [attr.y]="p[0] * cell + 2" [attr.width]="cell - 4"
+                [attr.height]="cell - 4" class="centre-mark" />
+        }
+        @for (ring of rings; track ring.r * 100 + ring.c) {
+          <rect [attr.x]="ring.c * cell" [attr.y]="ring.r * cell" [attr.width]="cell" [attr.height]="cell"
+                [attr.fill]="ring.white ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.32)'" />
+        }
+        @for (r of rowsIdx; track r) {
+          @for (c of colsIdx; track c) {
+            @if (stone(r, c); as colour) {
+              <circle [attr.cx]="centre(c) + 1.5" [attr.cy]="centre(r) + 2.5" [attr.r]="cell * 0.4"
+                      class="stone-shadow" />
+              <circle [attr.cx]="centre(c)" [attr.cy]="centre(r)" [attr.r]="cell * 0.4"
+                      [attr.fill]="colour === 'white' ? 'url(#tut-white)' : 'url(#tut-black)'" />
+            }
+          }
+        }
+        @for (ring of rings; track ring.r * 100 + ring.c) {
+          <text [attr.x]="centre(ring.c)" [attr.y]="centre(ring.r)" class="king"
+                [class.king-white]="ring.white">♚</text>
+        }
+        @for (d of dots; track d[0] * 100 + d[1]) {
+          <circle [attr.cx]="centre(d[1])" [attr.cy]="centre(d[0])" [attr.r]="cell * 0.23" class="dot" />
+        }
+        @for (x of captures; track x[0] * 100 + x[1]) {
+          <circle [attr.cx]="centre(x[1])" [attr.cy]="centre(x[0])" [attr.r]="cell * 0.36" class="capture" />
+          <line [attr.x1]="centre(x[1]) - cell * 0.2" [attr.y1]="centre(x[0]) - cell * 0.2"
+                [attr.x2]="centre(x[1]) + cell * 0.2" [attr.y2]="centre(x[0]) + cell * 0.2" class="capture" />
+        }
+        @if (arrow; as a) {
+          <line [attr.x1]="a.x1" [attr.y1]="a.y1" [attr.x2]="a.x2" [attr.y2]="a.y2" class="arrow"
+                marker-end="url(#tut-arrowhead)" />
+        }
+      </svg>
+    }
+
+    <p class="tutorial-text">{{ step().text }}</p>
+
+    <div class="tutorial-dots" aria-hidden="true">
+      @for (s of steps; track $index) {
+        <span class="tutorial-dot" [class.on]="$index === index()"></span>
+      }
+    </div>
+
+    <div class="tutorial-actions">
+      @if (!isLast) {
+        <button class="btn-skip" (click)="closed.emit()">Skip</button>
+      }
+      <span class="spacer"></span>
+      @if (index() > 0) {
+        <button class="btn-back" (click)="back()">Back</button>
+      }
+      <button class="btn-next" (click)="next()">{{ isLast ? 'Start playing' : 'Next' }}</button>
+    </div>
+  </div>
+</div>

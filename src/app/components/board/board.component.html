@@ -208,7 +208,10 @@
 
       <hr class="panel-divider">
 
-      <button class="btn-new-game" (click)="resetGame()">New Game</button>
+      <div class="panel-buttons">
+        <button class="btn-new-game" (click)="resetGame()">New Game</button>
+        <button class="btn-new-game" (click)="openTutorial()">Tutorial</button>
+      </div>
 
       <hr class="panel-divider">
 
@@ -280,5 +283,9 @@
       <li><strong>No captures:</strong> if {{ quietMoveLimit }} moves pass with no capture (by either side, including your own stones), the game ends and whoever has <em>more stones</em> on the board wins; equal stones is a draw. Any capture resets the count.</li>
     </ul>
   </details>
+
+  @if (showTutorial) {
+    <app-tutorial (closed)="closeTutorial()" />
+  }
 
 </div>

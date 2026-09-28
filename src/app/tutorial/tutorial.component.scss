@@ -1,0 +1,129 @@
+// The tutorial card, in the board component's palette.
+.tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+  animation: fade-in 0.2s ease;
+}
+
+.tutorial-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: #1e1e38;
+  border: 1px solid #3a3a70;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.tutorial-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #8888b0;
+}
+
+.tutorial-kicker {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tutorial-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #f0c040;
+}
+
+.mini-board {
+  width: 100%;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+
+  .sq { stroke: rgba(60, 30, 0, 0.45); stroke-width: 1; }
+  .centre-mark { fill: none; stroke: #ffd700; stroke-width: 2.5; }
+  .stone-shadow { fill: rgba(0, 0, 0, 0.35); }
+  .dot { fill: rgba(56, 212, 90, 0.25); stroke: #38d45a; stroke-width: 2.5; }
+  .capture { fill: none; stroke: #ff5a5a; stroke-width: 3; }
+  .arrow { stroke: #ffca28; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
+
+  .king {
+    font-size: 25px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    fill: #141414;
+  }
+  .king-white { fill: #fdfdfd; }
+}
+
+.tutorial-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #d0d0e8;
+  white-space: pre-line;
+}
+
+.tutorial-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tutorial-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a3a70;
+  &.on { background: #f0c040; }
+}
+
+.tutorial-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .spacer { flex: 1; }
+
+  button {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+  }
+}
+
+.btn-skip, .btn-back {
+  background: none;
+  color: #8888b0;
+  &:hover { color: #e0e0f0; }
+}
+
+.btn-back { color: #e0e0e0; }
+
+.btn-next {
+  background: #f0c040;
+  color: #111;
+  font-weight: 700;
+  &:hover { background: #ffd060; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
